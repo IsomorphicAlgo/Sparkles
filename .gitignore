@@ -1,0 +1,38 @@
+# Secrets
+.env
+.env.*
+!.env.example
+secrets*.yaml
+secrets*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Data / caches (when you add them)
+data/cache/
+*.parquet
+
+# IDE
+.idea/
+
+# OS
+Thumbs.db
+Desktop.ini
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# mypy
+.mypy_cache/
