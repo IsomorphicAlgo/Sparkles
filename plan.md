@@ -4,7 +4,7 @@ overview: "Greenfield Python project: TwelveData 1m ingest with retries/cache, t
 todos:
   - id: scaffold
     content: "Iteration 1: pyproject, package skeleton, config models, DEVELOPER.md, rklb_baseline.yaml"
-    status: pending
+    status: complete
   - id: ingest
     content: "Iteration 2: TwelveData 1m client, retry/rate limits, Parquet cache, ingest CLI"
     status: pending
@@ -59,7 +59,7 @@ These rules apply to **every** AI agent, script, or contributor working in this 
 - **Goal:** Runnable package layout, dependencies, config schema stub, `DEVELOPER.md`, `configs/experiments/rklb_baseline.yaml` (RKLB, `min_profit_per_trade_pct`), `.env.example`.
 - **Deliverables:** `pyproject.toml` or `requirements.txt`, `sparkles/` package with empty modules or stubs, Pydantic config loading, documented entrypoint placeholder.
 - **Done when:** `pip install -e .` (or venv + deps) succeeds; owner can find symbol and training file paths in `DEVELOPER.md`.
-- **Status:** `not started`
+- **Status:** `complete — awaiting approval for Iteration 2`
 - **Owner approval to proceed to Iteration 2:** `[ ]` Date: ___________
 
 ### Iteration 2 — Data ingestion
@@ -242,3 +242,4 @@ All under package `sparkles/`:
 | Date (ISO) | Summary | Paths / artifacts | Iteration |
 |------------|---------|-------------------|-----------|
 | 2026-04-07 | Iterative roadmap added: mandatory agent rules, approval gates per iteration, progress log; Cursor rule `.cursor/rules/sparkles-iterative-plan.mdc` added. Frontmatter todos remapped to iterations 1–7. | `plan.md`, `.cursor/rules/sparkles-iterative-plan.mdc` | Iteration 0 complete — **awaiting owner approval to start Iteration 1** |
+| 2026-04-07 | **Iteration 1 complete:** `pyproject.toml` (deps + `sparkles` console script + ruff/mypy), full `sparkles/` package stubs, Pydantic `ExperimentConfig` + `load_experiment_config`, `configs/experiments/rklb_baseline.yaml`, `.env.example`, `DEVELOPER.md`. Verified `pip install -e ".[dev]"`, `sparkles ingest`, `ruff check`, `mypy sparkles`. | `pyproject.toml`, `sparkles/**`, `configs/experiments/rklb_baseline.yaml`, `.env.example`, `DEVELOPER.md`, `plan.md` | **Blocked until owner approves Iteration 2** (data ingestion) |
