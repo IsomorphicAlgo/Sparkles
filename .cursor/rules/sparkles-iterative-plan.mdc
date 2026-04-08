@@ -1,0 +1,21 @@
+---
+description: Sparkles — iterative plan, approval gates, progress log in plan.md
+alwaysApply: true
+---
+
+# Sparkles project constraints
+
+Read and follow **[plan.md](plan.md)** at the repository root for full technical design.
+
+## Non-negotiable workflow
+
+1. **Do not start the next iteration** (or the next numbered step in the iteration roadmap) until the **project owner has explicitly approved** proceeding in chat (e.g. “approved — continue to Iteration N”) or has updated **plan.md** to mark that iteration approved.
+2. **After any substantive change** (code, config, dependencies, or material design tweak), **append an entry** to the **Progress & change log** section at the **bottom** of `plan.md`. Include date (ISO), short summary, files touched, and current iteration status.
+3. Treat **plan.md** as the **single source of truth** for where the project is in the roadmap and what was last done. If instructions conflict with `plan.md`, follow `plan.md` and ask the owner if unclear.
+4. Prefer **one iteration’s scope per session** unless the owner explicitly asks to continue across iterations in one go.
+
+## When finishing work in an iteration
+
+- Summarize deliverables for the owner.
+- State clearly: **“Blocked until you approve proceeding to Iteration N+1.”**
+- Append the progress log entry in `plan.md` in the same change set when possible.
