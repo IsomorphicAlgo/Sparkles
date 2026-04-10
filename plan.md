@@ -10,10 +10,10 @@ todos:
     status: complete
   - id: vol
     content: "Iteration 3: 20-day vol series aligned to bars, tests (no lookahead)"
-    status: pending
+    status: complete
   - id: labels
     content: "Iteration 4: triple barrier + min profit + label CLI"
-    status: pending
+    status: complete
   - id: day-trade-limit
     content: "Iteration 5: day_trade_ledger (3 in 5 biz days) + tests + optional CLI hook"
     status: pending
@@ -69,14 +69,14 @@ These rules apply to **every** AI agent, script, or contributor working in this 
 - **Deliverables:** `twelvedata_client.py`, `retry.py`, `ingest.py`, documented env var for API key.
 - **Done when:** Owner can run ingest for RKLB for a configured window and see cached Parquet.
 - **Status:** `complete — awaiting approval for Iteration 3`
-- **Owner approval to proceed to Iteration 3:** `[ ]` Date: ___________
+- **Owner approval to proceed to Iteration 3:** `[MH]` Date: 4-9-26
 
 ### Iteration 3 — Volatility
 
 - **Goal:** 20-trading-day volatility aligned to bars without lookahead.
 - **Deliverables:** `features/volatility.py` (or dedicated module), unit tests for alignment.
 - **Done when:** Tests pass; vol series documented in `DEVELOPER.md`.
-- **Status:** `not started`
+- **Status:** `complete — awaiting approval for Iteration 4`
 - **Owner approval to proceed to Iteration 4:** `[ ]` Date: ___________
 
 ### Iteration 4 — Labels
@@ -84,7 +84,7 @@ These rules apply to **every** AI agent, script, or contributor working in this 
 - **Goal:** Triple barrier (15% / 5% vol-scaled, `min_profit_per_trade_pct` floor), intraday path scan, `label` CLI.
 - **Deliverables:** `triple_barrier.py`, `types.py`, labeled dataset output path, summary stats on CLI.
 - **Done when:** Owner can run `label` and inspect class/barrier distribution.
-- **Status:** `not started`
+- **Status:** `complete — awaiting approval for Iteration 5`
 - **Owner approval to proceed to Iteration 5:** `[ ]` Date: ___________
 
 ### Iteration 5 — Day-trade ledger
@@ -251,3 +251,5 @@ All under package `sparkles/`:
 | 2026-04-09 | **Iteration 2 complete:** `retry.py` (backoff, retryable errors), `ResilientHttpClient` + `fetch_ohlcv_1min`, `ingest.run_ingest` with calendar chunking, Parquet cache + TTL, CLI `ingest --force/--verbose`. Config: `ingest_chunk_calendar_days`, `twelvedata_outputsize`, `http_timeout_seconds`, `retry_max_attempts`, `twelvedata_exchange`. Dev: `pandas-stubs`, `types-requests`, mypy overrides for `twelvedata`. Tests: `tests/test_ingest_windows.py`. | `sparkles/data/*.py`, `sparkles/cli.py`, `sparkles/config/schema.py`, `pyproject.toml`, `tests/`, `DEVELOPER.md`, `plan.md` | **Blocked until owner approves Iteration 3** (volatility) |
 | 2026-04-09 | **TwelveData free-tier ingest:** pause **20s** between chunks; on per-minute credit errors sleep **~65s** then retry (not fast exponential backoff); default chunk **10** calendar days; `rklb_baseline.yaml` documents tuning. `is_per_minute_credit_exhausted_error` + `tests/test_retry_credits.py`. | `retry.py`, `twelvedata_client.py`, `ingest.py`, `schema.py`, `rklb_baseline.yaml`, `DEVELOPER.md`, `plan.md` | Iteration 3 approval unchanged |
 | 2026-04-09 | **Docs + agent rules:** `.cursor/rules/sparkles-api-credits.mdc` (always apply: preserve API credits). **`METHODOLOGY.md`** (end-to-end methodology). **`README.md`** (GitHub quick start). `plan.md` mandatory rule #6; `pyproject` readme → `README.md`; `DEVELOPER.md` links updated. | `.cursor/rules/`, `METHODOLOGY.md`, `README.md`, `DEVELOPER.md`, `plan.md`, `pyproject.toml` | Iteration 3 approval unchanged |
+| 2026-04-09 | **Iteration 3 complete:** `sparkles/features/volatility.py` — daily last close, rolling log-return std with `shift(1)` (no lookahead), √252 `vol_{N}d_ann` + `sigma_daily_{N}d`, `add_volatility_from_config`. Tests `tests/test_volatility.py`. `DEVELOPER.md` + `METHODOLOGY.md` updated; `features/__init__.py` exports. | `sparkles/features/`, `tests/test_volatility.py`, `DEVELOPER.md`, `METHODOLOGY.md`, `plan.md` | **Blocked until owner approves Iteration 4** (labels) |
+| 2026-04-07 | **Iteration 4 complete:** `triple_barrier.py` — vol-scaled barriers (clamped), min-profit TP floor, trading-day vertical, pessimistic same-bar SL-before-TP; `BarrierOutcome` + `END_OF_DATA`. Config: `barrier_vol_scale_min` / `max`, `label_entry_stride` (default 390). CLI `sparkles label -c …` writes `{SYMBOL}_labeled_{start}_{end}_s{stride}.parquet` and prints `barrier_outcome` value counts. Tests `tests/test_triple_barrier.py`. | `sparkles/labels/`, `sparkles/config/schema.py`, `sparkles/cli.py`, `tests/test_triple_barrier.py`, `DEVELOPER.md`, `plan.md` | **Blocked until owner approves Iteration 5** (day-trade ledger) |

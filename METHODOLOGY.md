@@ -60,7 +60,7 @@ Work proceeds in **iterations** documented in **`plan.md`**; the next stage star
 | Stage | Role |
 |--------|------|
 | **Ingest** | TwelveData 1m historical → normalized OHLCV → Parquet cache. |
-| **Volatility** | ~20 **trading-day** volatility aligned to each bar **without lookahead** (for scaling barriers). |
+| **Volatility** | Daily-close log returns → rolling std over `vol_lookback_trading_days`, **`shift(1)`**, √252 annualization; broadcast to every 1m bar on that session date (`sparkles/features/volatility.py`). |
 | **Labels (triple barrier)** | For each candidate entry time: upper barrier (take-profit path), lower barrier (stop), vertical barrier (max holding time). Moves scaled by **recent volatility** vs a reference; effective TP floored by **`min_profit_per_trade_pct`**. Path uses **full 1m forward path**, including **same-day** touches (labels match intraday reality). |
 | **Day-trade ledger** | Rolling **5 US business days**, **≤ 3** day-trade days; used for **future** simulation/advisory logic, not for rewriting labels in Phase 1 unless requested later. |
 | **Features + train** | Leakage-safe features, time-ordered split, baseline classifier in **`sparkles/models/train.py`**, saved artifacts + run logging. |

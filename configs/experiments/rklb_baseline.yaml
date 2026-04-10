@@ -9,18 +9,18 @@ cache_ttl_hours: 24
 # If you still see credit errors, increase ingest_sleep_seconds_between_chunks (e.g. 30–45)
 # or shorten data_start/data_end. Paid tiers can lower these.
 ingest_chunk_calendar_days: 10
-ingest_sleep_seconds_between_chunks: 20
+ingest_sleep_seconds_between_chunks: 10
 twelvedata_per_minute_credit_wait_seconds: 65
 
 # Historical 1m range for ingest (inclusive-ish per API chunks in Iteration 2)
-data_start: 2024-01-01
-data_end: 2024-12-31
+data_start: 2022-01-01
+data_end: 2026-03-30
 
 # Optional train/val windows (defaults omitted = set when you start training)
-train_start: 2024-01-02
-train_end: 2024-09-30
-val_start: 2024-10-01
-val_end: 2024-12-31
+train_start: 2022-01-01
+train_end: 2026-01-01
+val_start: 2026-01-02
+val_end: 2026-03-30
 
 # Triple barrier (fractions: 0.15 = 15%)
 profit_barrier_base: 0.15

@@ -16,13 +16,37 @@ Quick reference for **where to change what** in Phase 1. Conceptual methodology:
 ## Labeling and minimum profit per trade
 
 - **Config:** `min_profit_per_trade_pct` in experiment YAML (fraction, e.g. `0.02` = **2%**)
-- **Implementation (Iteration 4):** `sparkles/labels/triple_barrier.py` — planned semantics: floor the vol-scaled take-profit move:
-  `effective_tp = max(min_profit_per_trade_pct, tp_move_from_vol)`
+- **Implementation:** `sparkles/labels/triple_barrier.py` — vol-scaled TP/SL (ratio `sigma_t / sigma_ref` clamped by `barrier_vol_scale_min` / `barrier_vol_scale_max`), then **effective TP move** `max(min_profit_per_trade_pct, tp_move_from_vol)`. Forward scan on 1m `high`/`low`; on a tie in the same bar, **stop** is checked before **take-profit** (pessimistic long). Vertical exit uses **trading-day** count from entry (`vertical_max_trading_days`). Entries are every `label_entry_stride` bars (default **390** ≈ one per regular session).
+- **CLI:** `sparkles label -c configs/experiments/rklb_baseline.yaml` loads the ingest Parquet for `symbol` + `data_start`/`data_end`, adds vol if missing, writes labeled Parquet, prints `barrier_outcome` value counts. `-v` enables progress logging.
+- **On disk (labeled):** `{SYMBOL}_labeled_{data_start}_{data_end}_s{label_entry_stride}.parquet` under `paths.cache_dir`.
 
 ## Barriers, vol lookback, vertical horizon
 
-- **Config:** `profit_barrier_base`, `stop_loss_base`, `vol_lookback_trading_days`, `vertical_max_trading_days` in experiment YAML
-- **Vol series (Iteration 3):** `sparkles/features/volatility.py`
+- **Config:** `profit_barrier_base`, `stop_loss_base`, `vol_lookback_trading_days`, `vertical_max_trading_days`, optional `barrier_vol_scale_min`, `barrier_vol_scale_max`, `label_entry_stride` in experiment YAML
+- **Volatility (Iteration 3):** `sparkles/features/volatility.py`
+  - **No lookahead:** all 1m bars on session date *D* get the same estimate: rolling std of **daily** log returns over `vol_lookback_trading_days`, then **`shift(1)`** so *D*’s own closing print is **not** in the window.
+  - **Outputs:** `sigma_daily_{N}d` (1-day units) and `vol_{N}d_ann` (= daily × √252) added by `add_volatility_columns` / `add_volatility_from_config`.
+  - **Usage:** load Parquet from ingest → `add_volatility_from_config(df, cfg)` (expects `close` column and bar index).
+
+**Quick script (from repo root, after ingest):**
+
+```bash
+python scripts/quick_try_vol.py
+python scripts/quick_try_vol.py -c configs/experiments/rklb_baseline.yaml
+```
+
+**Or in a Python REPL / notebook** (not raw PowerShell — use `python` first):
+
+```python
+import pandas as pd
+from pathlib import Path
+from sparkles.config import load_experiment_config
+from sparkles.features import add_volatility_from_config
+
+cfg = load_experiment_config(Path("configs/experiments/rklb_baseline.yaml"))
+df = pd.read_parquet("data/cache/RKLB_1min_2024-01-01_2024-12-31.parquet")
+df2 = add_volatility_from_config(df, cfg)
+```
 
 ## Day-trade cap (3 in 5 US business days)
 
@@ -57,9 +81,10 @@ After `pip install -e .` (and optional `[ml]` extra for sklearn/xgboost later):
 sparkles --help
 sparkles ingest --config configs/experiments/rklb_baseline.yaml
 sparkles ingest -c configs/experiments/rklb_baseline.yaml --force --verbose
+sparkles label -c configs/experiments/rklb_baseline.yaml
 ```
 
-`label` and `train` remain stubs until later iterations.
+`train` remains a stub until Iteration 6.
 
 ## Config loading in code
 

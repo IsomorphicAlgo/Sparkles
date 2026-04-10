@@ -6,9 +6,9 @@ from enum import Enum
 
 
 class BarrierOutcome(str, Enum):
-    """Which barrier was touched first (long position convention)."""
+    """Which barrier was touched first (long, pessimistic same-bar tie-break)."""
 
     TAKE_PROFIT = "take_profit"
     STOP_LOSS = "stop_loss"
     VERTICAL = "vertical"
-    # Extend in Iteration 4 as needed (e.g. neutral / no trade)
+    END_OF_DATA = "end_of_data"

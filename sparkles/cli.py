@@ -9,10 +9,12 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import pandas as pd
 import typer
 
 from sparkles.config import load_experiment_config
 from sparkles.data.ingest import run_ingest
+from sparkles.labels.triple_barrier import run_label
 
 app = typer.Typer(
     help="Sparkles swing ML pipeline (Phase 1). Use --config for experiment YAML.",
@@ -80,11 +82,28 @@ def label(
         dir_okay=False,
         help="Experiment YAML",
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Progress logging",
+    ),
 ) -> None:
-    """Build triple-barrier labels (Iteration 4)."""
+    """Build triple-barrier labels from cached 1m Parquet; write labeled Parquet."""
+    logging.basicConfig(
+        level=logging.DEBUG if verbose else logging.INFO,
+        format="%(levelname)s %(name)s: %(message)s",
+    )
     cfg_path = _resolve_config(config)
-    _ = load_experiment_config(cfg_path)
-    typer.echo(f"[label] config OK: {cfg_path} (Iteration 4)")
+    cfg = load_experiment_config(cfg_path)
+    try:
+        out = run_label(cfg)
+    except (FileNotFoundError, KeyError, ValueError) as e:
+        typer.secho(str(e), err=True, fg=typer.colors.RED)
+        raise typer.Exit(code=1) from e
+    typer.echo(str(out.resolve()))
+    summary = pd.read_parquet(out)["barrier_outcome"].value_counts()
+    typer.echo(summary.to_string())
 
 
 @app.command()

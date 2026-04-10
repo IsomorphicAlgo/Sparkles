@@ -57,6 +57,23 @@ class ExperimentConfig(BaseModel):
         description="Triple-barrier vertical horizon in trading days",
     )
     vol_ref_method: Literal["median", "mean"] = "median"
+    barrier_vol_scale_min: float = Field(
+        default=0.25,
+        gt=0,
+        le=1.0,
+        description="Clamp sigma/sigma_ref from below when scaling barriers",
+    )
+    barrier_vol_scale_max: float = Field(
+        default=4.0,
+        ge=1.0,
+        le=20.0,
+        description="Clamp sigma/sigma_ref from above when scaling barriers",
+    )
+    label_entry_stride: int = Field(
+        default=390,
+        ge=1,
+        description="Use every Nth bar as entry (390 ≈ one per 1m trading day)",
+    )
 
     max_day_trades: int = Field(default=3, ge=1, le=3)
     rolling_business_days: int = Field(default=5, ge=1)
