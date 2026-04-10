@@ -6,11 +6,13 @@ default path resolves.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import typer
 
 from sparkles.config import load_experiment_config
+from sparkles.data.ingest import run_ingest
 
 app = typer.Typer(
     help="Sparkles swing ML pipeline (Phase 1). Use --config for experiment YAML.",
@@ -40,11 +42,32 @@ def ingest(
         dir_okay=False,
         help="Experiment YAML (default: configs/experiments/rklb_baseline.yaml)",
     ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Ignore cache TTL and re-download the full range",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Log each chunk to stderr",
+    ),
 ) -> None:
-    """Download and cache 1m bars (Iteration 2)."""
+    """Download and cache 1m bars (historical batch; TwelveData)."""
+    logging.basicConfig(
+        level=logging.DEBUG if verbose else logging.INFO,
+        format="%(levelname)s %(name)s: %(message)s",
+    )
     cfg_path = _resolve_config(config)
-    _ = load_experiment_config(cfg_path)
-    typer.echo(f"[ingest] config OK: {cfg_path} (Iteration 2)")
+    cfg = load_experiment_config(cfg_path)
+    try:
+        path = run_ingest(cfg, force_refresh=force)
+    except ValueError as e:
+        typer.secho(str(e), err=True, fg=typer.colors.RED)
+        raise typer.Exit(code=1) from e
+    typer.echo(str(path.resolve()))
 
 
 @app.command()

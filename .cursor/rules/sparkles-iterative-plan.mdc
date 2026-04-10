@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Sparkles project constraints
 
-Read and follow **[plan.md](plan.md)** at the repository root for full technical design.
+Read and follow **[plan.md](plan.md)** at the repository root for full technical design. **TwelveData API credits:** follow **[sparkles-api-credits.mdc](sparkles-api-credits.mdc)** (same `.cursor/rules/` folder)—preserving credits is crucial.
 
 ## Non-negotiable workflow
 

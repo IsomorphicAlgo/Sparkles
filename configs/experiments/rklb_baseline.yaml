@@ -1,0 +1,45 @@
+# RKLB baseline experiment — Phase 1
+# Symbol and practice ticker
+symbol: RKLB
+exchange_timezone: America/New_York
+
+cache_ttl_hours: 24
+
+# TwelveData FREE tier (~8 API credits / minute): throttle + fewer chunks.
+# If you still see credit errors, increase ingest_sleep_seconds_between_chunks (e.g. 30–45)
+# or shorten data_start/data_end. Paid tiers can lower these.
+ingest_chunk_calendar_days: 10
+ingest_sleep_seconds_between_chunks: 20
+twelvedata_per_minute_credit_wait_seconds: 65
+
+# Historical 1m range for ingest (inclusive-ish per API chunks in Iteration 2)
+data_start: 2024-01-01
+data_end: 2024-12-31
+
+# Optional train/val windows (defaults omitted = set when you start training)
+train_start: 2024-01-02
+train_end: 2024-09-30
+val_start: 2024-10-01
+val_end: 2024-12-31
+
+# Triple barrier (fractions: 0.15 = 15%)
+profit_barrier_base: 0.15
+stop_loss_base: 0.05
+# Floor on take-profit *move* after vol scaling (0.02 = 2%)
+min_profit_per_trade_pct: 0.02
+
+vol_lookback_trading_days: 20
+vertical_max_trading_days: 10
+vol_ref_method: median
+
+# Day-trade budget (conservative vs PDT)
+max_day_trades: 3
+rolling_business_days: 5
+
+model:
+  type: logistic_regression
+  random_seed: 42
+
+paths:
+  cache_dir: data/cache
+  artifacts_dir: artifacts

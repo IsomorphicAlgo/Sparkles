@@ -61,6 +61,38 @@ class ExperimentConfig(BaseModel):
     max_day_trades: int = Field(default=3, ge=1, le=3)
     rolling_business_days: int = Field(default=5, ge=1)
 
+    # Ingest / TwelveData (Iteration 2)
+    ingest_chunk_calendar_days: int = Field(
+        default=10,
+        ge=1,
+        le=31,
+        description="Split historical requests into windows of this many calendar days",
+    )
+    twelvedata_outputsize: int = Field(
+        default=5000,
+        ge=100,
+        le=5000,
+        description="Max bars per API request (TwelveData cap is 5000)",
+    )
+    http_timeout_seconds: float = Field(default=60.0, ge=5.0, le=300.0)
+    retry_max_attempts: int = Field(default=6, ge=1, le=20)
+    twelvedata_exchange: str | None = Field(
+        default=None,
+        description="Optional exchange id for TwelveData, e.g. NASDAQ",
+    )
+    ingest_sleep_seconds_between_chunks: float = Field(
+        default=20.0,
+        ge=0.0,
+        le=300.0,
+        description="Pause between chunk requests (free tier ~8 API credits/minute)",
+    )
+    twelvedata_per_minute_credit_wait_seconds: float = Field(
+        default=65.0,
+        ge=30.0,
+        le=300.0,
+        description="Sleep when API reports per-minute credit exhaustion, before retry",
+    )
+
     train_start: date | None = None
     train_end: date | None = None
     val_start: date | None = None

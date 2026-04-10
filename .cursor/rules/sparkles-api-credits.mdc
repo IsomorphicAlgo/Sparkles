@@ -1,0 +1,21 @@
+---
+description: Sparkles — preserve TwelveData API credits (free tier and above)
+alwaysApply: true
+---
+
+# TwelveData API credits (non-negotiable)
+
+**Preserving API credits is crucial** for this project. The owner uses TwelveData on a **free tier** (and may upgrade later). Every agent and change must **minimize unnecessary API usage**.
+
+## Rules
+
+1. **Do not** add features that poll TwelveData on a tight loop, stream continuously, or re-fetch data that is already cached without an explicit owner request and design review.
+2. **Prefer** the existing **Parquet cache**, **`cache_ttl_hours`**, and **`--force` only when needed**. Default behavior should avoid redundant HTTP calls.
+3. **Respect** ingest throttling in config: `ingest_sleep_seconds_between_chunks`, `twelvedata_per_minute_credit_wait_seconds`, `ingest_chunk_calendar_days`. Do not remove or shrink these defaults for free-tier use without documenting tradeoffs in `DEVELOPER.md` / `METHODOLOGY.md`.
+4. **On rate or per-minute credit errors**, use **patient retries** (wait for the next minute window), not rapid retry storms. Extend `sparkles/data/retry.py` and related code in that spirit.
+5. **Never** embed API keys in tracked files; keys stay in environment / gitignored `.env` only.
+
+## References
+
+- **[METHODOLOGY.md](METHODOLOGY.md)** — data pipeline and credit-aware ingest.
+- **[DEVELOPER.md](DEVELOPER.md)** — config knobs for ingest throttling.

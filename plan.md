@@ -1,13 +1,13 @@
 ---
 name: Swing ML Phase 1
-overview: "Greenfield Python project: TwelveData 1m ingest with retries/cache, triple-barrier labels (15%/5% vol-scaled, tuneable min profit), train on one symbol (default RKLB), readable modules plus DEVELOPER.md; execution/backtest enforces at most 3 day trades per rolling 5 US business days. Execution is iterative: each roadmap step requires owner approval before the next; all agents log progress in plan.md."
+overview: "Greenfield Python project: TwelveData 1m ingest with retries/cache, triple-barrier labels (15%/5% vol-scaled, tuneable min profit), train on one symbol (default RKLB), readable modules plus DEVELOPER.md; day-trade cap 3 in 5 US business days to avoid breaking PDT pattern. Historical data first—no live/scheduled API polling until owner is satisfied with model performance. Iterative roadmap with approval gates; progress in plan.md."
 todos:
   - id: scaffold
     content: "Iteration 1: pyproject, package skeleton, config models, DEVELOPER.md, rklb_baseline.yaml"
     status: complete
   - id: ingest
     content: "Iteration 2: TwelveData 1m client, retry/rate limits, Parquet cache, ingest CLI"
-    status: pending
+    status: complete
   - id: vol
     content: "Iteration 3: 20-day vol series aligned to bars, tests (no lookahead)"
     status: pending
@@ -37,6 +37,7 @@ These rules apply to **every** AI agent, script, or contributor working in this 
 3. **Progress log:** After substantive work, **append** a new entry to **[Progress & change log](#progress--change-log-append-only)** at the bottom of this file. Include: date (ISO `YYYY-MM-DD`), brief summary, files/paths touched, and which iteration is now complete or blocked.
 4. **Source of truth:** This **`plan.md`** is authoritative for roadmap status and recent history. If anything conflicts, follow **`plan.md`** and confirm with the owner.
 5. **Cursor:** Workspace rule **`.cursor/rules/sparkles-iterative-plan.mdc`** restates the approval and logging requirements for agents in the editor.
+6. **API credits:** **Preserving TwelveData API credits is crucial** (free tier). Do not add redundant fetches, high-frequency polling, or aggressive retries that burn credits. Follow **`.cursor/rules/sparkles-api-credits.mdc`** and **[METHODOLOGY.md](METHODOLOGY.md)**.
 
 ## How iterations work
 
@@ -52,7 +53,7 @@ These rules apply to **every** AI agent, script, or contributor working in this 
 
 - **Goal:** Lock architecture, constraints, and developer map in this document.
 - **Status:** **complete** (baseline established; iterative gates added).
-- **Owner approval to proceed to Iteration 1:** `[ ]` Approve by checking the box and adding date/name, or say so in chat.
+- **Owner approval to proceed to Iteration 1:** Approved (owner chat).
 
 ### Iteration 1 — Scaffold
 
@@ -60,14 +61,14 @@ These rules apply to **every** AI agent, script, or contributor working in this 
 - **Deliverables:** `pyproject.toml` or `requirements.txt`, `sparkles/` package with empty modules or stubs, Pydantic config loading, documented entrypoint placeholder.
 - **Done when:** `pip install -e .` (or venv + deps) succeeds; owner can find symbol and training file paths in `DEVELOPER.md`.
 - **Status:** `complete — awaiting approval for Iteration 2`
-- **Owner approval to proceed to Iteration 2:** `[ ]` Date: ___________
+- **Owner approval to proceed to Iteration 2:** `[MH ]` Date: 4-9-26
 
 ### Iteration 2 — Data ingestion
 
-- **Goal:** TwelveData 1m fetch, retries/rate limits, Parquet cache, `ingest` CLI.
+- **Goal:** TwelveData 1m **historical** fetch (backfill for `data_start`–`data_end`), retries/rate limits, Parquet cache, `ingest` CLI. **Not in scope:** daemons, scheduled “live” polling, or near-real-time loops—that waits until after the owner accepts trained-model quality (see Context: historical-first policy).
 - **Deliverables:** `twelvedata_client.py`, `retry.py`, `ingest.py`, documented env var for API key.
 - **Done when:** Owner can run ingest for RKLB for a configured window and see cached Parquet.
-- **Status:** `not started`
+- **Status:** `complete — awaiting approval for Iteration 3`
 - **Owner approval to proceed to Iteration 3:** `[ ]` Date: ___________
 
 ### Iteration 3 — Volatility
@@ -114,8 +115,10 @@ These rules apply to **every** AI agent, script, or contributor working in this 
 ## Context
 
 - **Starting state:** Application code is built incrementally per the roadmap above; git repo initialized with `main` and `master` at same tip for tool compatibility.
-- **Day-trade / PDT policy (design law):** The program **may** open and close the same position on the **same US equity session day** (a day trade). It must **never** exceed **3 day trades within any rolling window of 5 consecutive US business days**. That is a **conservative** reading relative to FINRA’s pattern day trader framing (often **4** day trades in 5 business days triggers PDT rules among other conditions). Enforcement lives in one module for **backtest, paper, or live** paths. When the limit is exhausted, **do not** complete a same-day round trip (e.g. defer exit or skip—document in code and `DEVELOPER.md`).
-- **Labeling vs execution:** **Triple-barrier labels** use the **full 1-minute path from entry**, including **same-day** barrier touches. The **3-in-5 ledger** applies in simulation/execution; optional future mode: labels that respect the ledger (defer unless requested).
+- **Day-trade / PDT policy (design law):** The owner’s goal is to **avoid breaking the pattern day trader (PDT) band**, not to forbid day trades entirely. The program **may** use same-day round trips **only** within the cap: **at most 3 day trades in any rolling window of 5 consecutive US business days** (`max_day_trades` / `rolling_business_days` in config). That stays **below** the usual **4-in-5** trigger that applies under FINRA’s PDT framework (among other conditions). Enforcement lives in one module for **future** advisory / simulation paths. When the limit is exhausted, **do not** complete another same-day round trip (e.g. defer exit or skip—document in code and `DEVELOPER.md`).
+- **Historical-first; no live polling until model sign-off:** Early iterations (**through training you are happy with**) use **batch historical** data only: pull a defined date range, cache, label, train. **Do not** add scheduled or continuous “live” TwelveData polling, streaming, or monitoring loops until the owner explicitly asks for that phase **after** they are satisfied with model performance. (Manual re-run of `ingest` for a new range is fine.)
+- **No brokerage execution:** The program does **not** place orders or connect to wallets/brokers; any future “assistant” layer is **recommendations + logging** unless the owner changes scope in writing.
+- **Labeling vs execution:** **Triple-barrier labels** use the **full 1-minute path from entry**, including **same-day** barrier touches. The **3-in-5 ledger** applies in **future** simulation/advisory use; optional future mode: labels that respect the ledger (defer unless requested).
 
 ## Developer guide (where to edit — readability)
 
@@ -225,7 +228,8 @@ All under package `sparkles/`:
 
 ## Deferred
 
-- Multi-asset, live broker, full slippage backtest.
+- Multi-asset, full slippage backtest, live broker APIs (still **no** auto-execution unless scope changes).
+- **Live / interval ingestion** and **monitoring assistant** (journal, recommendations): after owner sign-off on model quality; tunable poll interval as a parameter when that phase is approved.
 
 ## Risk notes
 
@@ -243,3 +247,7 @@ All under package `sparkles/`:
 |------------|---------|-------------------|-----------|
 | 2026-04-07 | Iterative roadmap added: mandatory agent rules, approval gates per iteration, progress log; Cursor rule `.cursor/rules/sparkles-iterative-plan.mdc` added. Frontmatter todos remapped to iterations 1–7. | `plan.md`, `.cursor/rules/sparkles-iterative-plan.mdc` | Iteration 0 complete — **awaiting owner approval to start Iteration 1** |
 | 2026-04-07 | **Iteration 1 complete:** `pyproject.toml` (deps + `sparkles` console script + ruff/mypy), full `sparkles/` package stubs, Pydantic `ExperimentConfig` + `load_experiment_config`, `configs/experiments/rklb_baseline.yaml`, `.env.example`, `DEVELOPER.md`. Verified `pip install -e ".[dev]"`, `sparkles ingest`, `ruff check`, `mypy sparkles`. | `pyproject.toml`, `sparkles/**`, `configs/experiments/rklb_baseline.yaml`, `.env.example`, `DEVELOPER.md`, `plan.md` | **Blocked until owner approves Iteration 2** (data ingestion) |
+| 2026-04-07 | **Owner clarification:** PDT intent is **avoid breaking the pattern** (keep **3 day trades / 5 business days**), not zero day trades. **Historical-first:** Iteration 2+ ingest remains **batch historical** only; **no live/scheduled API polling** until owner is satisfied with trained model and approves a later phase. `DEVELOPER.md` + overview + Deferred updated. | `plan.md`, `DEVELOPER.md` | Still **blocked on Iteration 2 approval**; scope unchanged for current roadmap |
+| 2026-04-09 | **Iteration 2 complete:** `retry.py` (backoff, retryable errors), `ResilientHttpClient` + `fetch_ohlcv_1min`, `ingest.run_ingest` with calendar chunking, Parquet cache + TTL, CLI `ingest --force/--verbose`. Config: `ingest_chunk_calendar_days`, `twelvedata_outputsize`, `http_timeout_seconds`, `retry_max_attempts`, `twelvedata_exchange`. Dev: `pandas-stubs`, `types-requests`, mypy overrides for `twelvedata`. Tests: `tests/test_ingest_windows.py`. | `sparkles/data/*.py`, `sparkles/cli.py`, `sparkles/config/schema.py`, `pyproject.toml`, `tests/`, `DEVELOPER.md`, `plan.md` | **Blocked until owner approves Iteration 3** (volatility) |
+| 2026-04-09 | **TwelveData free-tier ingest:** pause **20s** between chunks; on per-minute credit errors sleep **~65s** then retry (not fast exponential backoff); default chunk **10** calendar days; `rklb_baseline.yaml` documents tuning. `is_per_minute_credit_exhausted_error` + `tests/test_retry_credits.py`. | `retry.py`, `twelvedata_client.py`, `ingest.py`, `schema.py`, `rklb_baseline.yaml`, `DEVELOPER.md`, `plan.md` | Iteration 3 approval unchanged |
+| 2026-04-09 | **Docs + agent rules:** `.cursor/rules/sparkles-api-credits.mdc` (always apply: preserve API credits). **`METHODOLOGY.md`** (end-to-end methodology). **`README.md`** (GitHub quick start). `plan.md` mandatory rule #6; `pyproject` readme → `README.md`; `DEVELOPER.md` links updated. | `.cursor/rules/`, `METHODOLOGY.md`, `README.md`, `DEVELOPER.md`, `plan.md`, `pyproject.toml` | Iteration 3 approval unchanged |
