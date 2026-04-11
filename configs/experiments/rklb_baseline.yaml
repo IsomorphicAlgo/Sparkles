@@ -26,7 +26,7 @@ val_end: 2026-03-30
 profit_barrier_base: 0.15
 stop_loss_base: 0.05
 # Floor on take-profit *move* after vol scaling (0.02 = 2%)
-min_profit_per_trade_pct: 0.02
+min_profit_per_trade_pct: 0.1
 
 vol_lookback_trading_days: 20
 vertical_max_trading_days: 10

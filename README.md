@@ -39,6 +39,8 @@ The command prints the path to a **Parquet** file under `data/cache/`. Then run 
 | **[METHODOLOGY.md](METHODOLOGY.md)** | What we’re building: data flow, labeling idea, PDT cap, API credit discipline, roadmap stages. |
 | **[DEVELOPER.md](DEVELOPER.md)** | Where to change symbol, training code, ingest settings, smoke path. |
 | **[plan.md](plan.md)** | Approval-gated iterations and append-only progress log. |
+| **[docs/README.md](docs/README.md)** | Index of everything under `docs/` (e.g. ML expansion plan). |
+| **[docs/ML_EXPANSION.md](docs/ML_EXPANSION.md)** | Living roadmap for richer models, features, and YAML experiments. |
 
 ## Security
 

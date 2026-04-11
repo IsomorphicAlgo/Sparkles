@@ -1,6 +1,20 @@
 # Sparkles developer map
 
-Quick reference for **where to change what** in Phase 1. Conceptual methodology: **[METHODOLOGY.md](METHODOLOGY.md)**. Roadmap and approvals: **`plan.md`**. GitHub overview: **[README.md](README.md)**.
+Quick reference for **where to change what** in Phase 1. Conceptual methodology: **[METHODOLOGY.md](METHODOLOGY.md)**. Roadmap and approvals: **`plan.md`**. GitHub overview: **[README.md](README.md)**. **ML expansion** (models, features, YAML roadmap): **[docs/ML_EXPANSION.md](docs/ML_EXPANSION.md)**.
+
+## Repository layout
+
+| Path | Role |
+|------|------|
+| **`sparkles/`** | Installable Python package: `config`, `data`, `features`, `labels`, `models`, `reporting`, `risk`, `tracking`, `cli.py`. |
+| **`configs/experiments/`** | Experiment YAML (e.g. `rklb_baseline.yaml`); validated by `sparkles/config/schema.py`. |
+| **`tests/`** | `pytest` only; mirror modules under `sparkles/` where practical. |
+| **`scripts/`** | Non-installed helpers (e.g. `quick_try_vol.py`); run with `python scripts/...`. |
+| **`docs/`** | Longer-lived docs beyond root summaries (`ML_EXPANSION.md`, this layout index in `docs/README.md`). |
+| **`data/cache/`** | Parquet from **`ingest`** / **`label`** (gitignored). |
+| **`artifacts/`** | Training runs + `experiments.jsonl` from **`train`** (gitignored). |
+| **Root** | `README.md`, `METHODOLOGY.md`, `DEVELOPER.md`, `plan.md`, `pyproject.toml`, `.env.example`, **`Sparkles.code-workspace`** (optional VS Code multi-root). |
+| **`.cursor/rules/`** | Cursor agent rules (API credits, iterative plan). |
 
 ## Practice symbol (ticker)
 

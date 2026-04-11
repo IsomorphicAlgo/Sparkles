@@ -22,6 +22,12 @@ build/
 data/cache/
 *.parquet
 
+# Training runs (local; regenerate with `sparkles train`)
+artifacts/
+
+# Tool caches
+.ruff_cache/
+
 # IDE
 .idea/
 

@@ -110,6 +110,8 @@ This overlaps with **[Purpose and general use](#purpose-and-general-use-read-thi
 | **METHODOLOGY.md** | This file — concepts and methodology. |
 | **DEVELOPER.md** | Where to edit symbol, training file, ingest knobs. |
 | **plan.md** | Iterations, approvals, append-only progress log. |
+| **[docs/README.md](docs/README.md)** | Index of files under `docs/`. |
+| **[docs/ML_EXPANSION.md](docs/ML_EXPANSION.md)** | Post–Phase 1 roadmap: models, features, YAML expansion (append-only log). |
 
 ---
 
