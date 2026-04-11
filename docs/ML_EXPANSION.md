@@ -4,13 +4,13 @@ overview: "Living plan to grow YAML-driven experiments: more model types, hyperp
 todos:
   - id: config-surface
     content: "Phase A: TrainConfig + extended ModelConfig (class_weight, solver, tol); richer experiments.jsonl"
-    status: not started
+    status: complete
   - id: feature-registry
     content: "Phase B: FeatureConfig YAML + named builders in features/; refactor dataset join"
-    status: not started
+    status: complete
   - id: model-registry
     content: "Phase C: Estimator factory + second model (e.g. xgboost under [ml] extra)"
-    status: not started
+    status: complete
   - id: preprocessing-pipeline
     content: "Phase D: sklearn Pipeline scaler fit-on-train-only; save in bundle"
     status: not started
@@ -114,3 +114,6 @@ This file is the **living roadmap** for improving **models**, **hyperparameters*
 |------------|---------|-----------------|-------|
 | 2026-04-11 | Doc created: phased roadmap (A–F), habits, document map; frontmatter todos for tracking. | `docs/ML_EXPANSION.md`, `DEVELOPER.md` pointer, `plan.md` progress row | **Baseline** (doc only) |
 | 2026-04-11 | Repo hygiene: **`artifacts/`** + **`.ruff_cache/`** gitignored; **`docs/README.md`** index; **`DEVELOPER.md`** repository layout table; **`scripts/README.md`**. | `.gitignore`, `docs/README.md`, `scripts/README.md`, `DEVELOPER.md`, `README.md`, `docs/ML_EXPANSION.md` | **Docs / layout** |
+| 2026-04-10 | **Phase A complete:** **`TrainConfig`** (`train:` YAML): `min_train_rows`, `min_val_rows`, `drop_val_unseen_classes`, `experiment_name`, `notes`. **`ModelConfig`**: `solver`, `tol`, `class_weight` (null / balanced / per-outcome map → sklearn ints in `run_train`). Richer **`experiments.jsonl`** fields. Tests in **`tests/test_train_smoke.py`**. **`DEVELOPER.md`** + commented examples in **`rklb_baseline.yaml`**. | `sparkles/config/schema.py`, `sparkles/models/train.py`, `sparkles/config/__init__.py`, `tests/test_train_smoke.py`, `DEVELOPER.md`, `configs/experiments/rklb_baseline.yaml`, `docs/ML_EXPANSION.md` | **Phase A** |
+| 2026-04-10 | **Phase B complete:** **`FeatureConfig`** + **`features:`** YAML; **`sparkles/features/builders.py`** (`EntryFeatureContext` + column builders); **`sparkles/features/registry.py`** (`assemble_feature_columns`). **`build_feature_matrix`** selects groups and required OHLCV columns from config. **`metrics.json`** / **`experiments.jsonl`** include **`features`** snapshot. Tests **`tests/test_dataset.py`**, **`tests/test_schema_features.py`**. | `sparkles/config/schema.py`, `sparkles/features/*.py`, `sparkles/models/train.py`, `sparkles/config/__init__.py`, `tests/`, `DEVELOPER.md`, `configs/experiments/rklb_baseline.yaml`, `docs/ML_EXPANSION.md` | **Phase B** |
+| 2026-04-10 | **Phase C complete:** **`sparkles/models/estimators.py`** — `build_estimator`, `resolve_logistic_class_weight`, `xgboost_fit_sample_weight`. **`ModelKind`** + **`xgboost_classifier`** behind **`[ml]`**; **`metrics.json`** **`model_type`**; tests **`tests/test_estimators.py`**, optional XGB end-to-end in **`tests/test_train_smoke.py`**. | `sparkles/models/estimators.py`, `sparkles/models/train.py`, `sparkles/models/__init__.py`, `sparkles/config/schema.py`, `sparkles/reporting/summary.py`, `sparkles/cli.py`, `tests/`, `DEVELOPER.md`, `README.md`, `configs/experiments/rklb_baseline.yaml`, `docs/ML_EXPANSION.md` | **Phase C** |

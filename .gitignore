@@ -1,11 +1,26 @@
-# Secrets
+# -----------------------------------------------------------------------------
+# Secrets and credentials (never commit)
+# -----------------------------------------------------------------------------
 .env
 .env.*
 !.env.example
+.envrc
 secrets*.yaml
+secrets*.yml
 secrets*.json
+*credentials*.json
+client_secret*.json
+token.json
+token.pickle
+*.pem
+*.p12
+id_rsa
+id_ecdsa
+id_ed25519
 
-# Python
+# -----------------------------------------------------------------------------
+# Python bytecode, packaging, virtual environments
+# -----------------------------------------------------------------------------
 __pycache__/
 *.py[cod]
 *$py.class
@@ -13,32 +28,55 @@ __pycache__/
 .venv/
 venv/
 env/
+.env.venv/
 *.egg-info/
 .eggs/
 dist/
 build/
+pip-wheel-metadata/
+*.egg
 
-# Data / caches (when you add them)
+# -----------------------------------------------------------------------------
+# Local data, caches, and training outputs (regenerate from CLI)
+# -----------------------------------------------------------------------------
 data/cache/
+# Personal trade CSVs (see data/journal/README.md; example: configs/examples/)
+data/journal/*.csv
+artifacts/
 *.parquet
 
-# Training runs (local; regenerate with `sparkles train`)
-artifacts/
-
-# Tool caches
+# -----------------------------------------------------------------------------
+# Test, type-check, and linter caches
+# -----------------------------------------------------------------------------
+.pytest_cache/
+.mypy_cache/
 .ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
 
-# IDE
+# -----------------------------------------------------------------------------
+# Optional future tooling (harmless if unused)
+# -----------------------------------------------------------------------------
+mlruns/
+wandb/
+
+# -----------------------------------------------------------------------------
+# IDE / OS noise
+# -----------------------------------------------------------------------------
 .idea/
-
-# OS
+*.swp
+*.swo
+*~
+.DS_Store
 Thumbs.db
 Desktop.ini
 
-# Testing / coverage
-.pytest_cache/
-.coverage
-htmlcov/
-
-# mypy
-.mypy_cache/
+# -----------------------------------------------------------------------------
+# Jupyter (if you open notebooks in-repo)
+# -----------------------------------------------------------------------------
+.ipynb_checkpoints/

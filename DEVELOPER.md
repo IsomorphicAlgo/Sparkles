@@ -6,12 +6,13 @@ Quick reference for **where to change what** in Phase 1. Conceptual methodology:
 
 | Path | Role |
 |------|------|
-| **`sparkles/`** | Installable Python package: `config`, `data`, `features`, `labels`, `models`, `reporting`, `risk`, `tracking`, `cli.py`. |
+| **`sparkles/`** | Package: `config`, `data`, `features`, `journal`, `labels`, `models`, `reporting`, `risk`, `tracking`, `cli.py`. |
 | **`configs/experiments/`** | Experiment YAML (e.g. `rklb_baseline.yaml`); validated by `sparkles/config/schema.py`. |
 | **`tests/`** | `pytest` only; mirror modules under `sparkles/` where practical. |
 | **`scripts/`** | Non-installed helpers (e.g. `quick_try_vol.py`); run with `python scripts/...`. |
 | **`docs/`** | Longer-lived docs beyond root summaries (`ML_EXPANSION.md`, this layout index in `docs/README.md`). |
 | **`data/cache/`** | Parquet from **`ingest`** / **`label`** (gitignored). |
+| **`data/journal/`** | Optional personal trade CSVs (see README there; `*.csv` gitignored). |
 | **`artifacts/`** | Training runs + `experiments.jsonl` from **`train`** (gitignored). |
 | **Root** | `README.md`, `METHODOLOGY.md`, `DEVELOPER.md`, `plan.md`, `pyproject.toml`, `.env.example`, **`Sparkles.code-workspace`** (optional VS Code multi-root). |
 | **`.cursor/rules/`** | Cursor agent rules (API credits, iterative plan). |
@@ -24,10 +25,17 @@ Quick reference for **where to change what** in Phase 1. Conceptual methodology:
 
 ## Training code (Python you edit often)
 
-- **File:** `sparkles/models/train.py` — **`run_train(cfg)`** loads labeled + ingest Parquets, **`build_feature_matrix`** (`sparkles/features/dataset.py`) joins on `entry_time`, splits by **US session date** using **`train_start` / `train_end` / `val_start` / `val_end`** (all four required for training), fits **`model.type`** `logistic_regression` (sklearn), writes **`model_bundle.joblib`** + **`metrics.json`** under **`{artifacts_dir}/{SYMBOL}/{run_id}/`**, and appends a line to **`{artifacts_dir}/experiments.jsonl`**.
+- **File:** `sparkles/models/train.py` — **`run_train(cfg)`** loads labeled + ingest Parquets, **`build_feature_matrix`**, time-splits, fits **`model.type`** via **`sparkles/models/estimators.py`**, writes **`model_bundle.joblib`**, **`metrics.json`**, and (by default) **`predictions.parquet`** per-row **`train.export_predictions`**: **`val`** (validation rows only), **`all`** (train+val), or **`none`**. Columns include **`entry_time`**, **`session_date`**, **`split`**, **`y_true`**, **`y_pred`**, per-class **`proba_*`**, **`max_proba`** when the estimator supports **`predict_proba`**. Path: **`{artifacts_dir}/{SYMBOL}/{run_id}/`**. Appends **`experiments.jsonl`**.
+- **Estimators:** `sparkles/models/estimators.py` — **`build_estimator`**: `logistic_regression` (sklearn, core deps) or **`xgboost_classifier`** (install **`pip install -e ".[ml]"`**). XGBoost hyperparameters: **`model.xgb_n_estimators`**, **`xgb_max_depth`**, **`xgb_learning_rate`**, **`xgb_subsample`**, **`xgb_colsample_bytree`**, **`xgb_min_child_weight`**. YAML **`model.class_weight`** maps to sklearn for logistic regression and to **`sample_weight`** for XGBoost when not null.
 - **Registry:** `sparkles/models/registry.py` — `new_run_id`, `run_artifact_dir`, `save_bundle`, `save_json`.
-- **Features at entry only:** `log_entry_close`, `sigma_ann_at_entry`, `vol_scale_ratio`, `tp_move_effective`, `sl_move`, `intraday_range_pct`, `log1p_volume` (no future path / `bars_forward` in X).
-- **Config:** `model.random_seed`, `model.logistic_c`, `model.max_iter` (see `ModelConfig` in `schema.py`). Use **`DEFAULT_TRAIN_KWARGS`** in `train.py` for scratch overrides not yet in YAML.
+- **Features at entry only:** Controlled by **`features:`** in YAML (`FeatureConfig` in `schema.py`). Each flag includes a builder group from **`sparkles/features/registry.py`** (see **`sparkles/features/builders.py`**):
+  - **`log_entry_close`:** column `log_entry_close` — `log(entry_close)` from the label row.
+  - **`label_geometry`:** `sigma_ann_at_entry`, `vol_scale_ratio`, `tp_move_effective`, `sl_move` — barrier/vol snapshot from labeling.
+  - **`intraday_range_pct`:** `(high − low) / entry_close` on the **entry bar** from ingest OHLCV (requires `high`, `low`, `close` on OHLCV).
+  - **`log1p_volume`:** `log1p(volume)` on the entry bar (volume optional on OHLCV; missing → zeros).
+  All default **true** (Phase 1 column set). No future path / `bars_forward` in the feature matrix.
+- **Config:** `model.*`, `train.*` (includes **`export_predictions`**), and **`features.*`**. Optional **`journal:`** — **`csv_path`**: your trade log (repo-relative or absolute). **CSV:** date column **`entry_date`**, **`date`**, **`open_date`**, or **`entry`** (ISO). Optional **`symbol`** / **`ticker`** filters rows to the experiment **`symbol`**. Extra columns (`exit_date`, `shares`, `pnl_pct`, `notes`, …) are kept in the merge output. **Long holds:** one row per **open** is fine; compare aligns on **entry session date** to aggregated model predictions that day (not daily P&L over the hold).
+- **Journal compare:** `sparkles journal compare -c …` — loads **`journal.csv_path`**, latest run with **`predictions.parquet`** (or **`--run <run_id>`**), aggregates predictions by **`session_date`** for **`--split val`** (default), **`train`**, or **`both`**, left-joins journal **`entry_date`**, writes **`journal_compare.csv`** in the run folder. Template: **`configs/examples/journal_trades.example.csv`**.
 - **Prerequisites:** `sparkles ingest` then `sparkles label` for the same `symbol`, `data_start`, `data_end`, and `label_entry_stride` as in the YAML.
 
 ## Labeling and minimum profit per trade
@@ -105,9 +113,13 @@ sparkles risk day-trades -c configs/experiments/rklb_baseline.yaml
 sparkles train -c configs/experiments/rklb_baseline.yaml
 sparkles report -c configs/experiments/rklb_baseline.yaml
 # Optional: sparkles report -c ... --run 20260411T015314_621888Z
+
+# After train (predictions.parquet) + journal.csv_path in YAML:
+sparkles journal compare -c configs/experiments/rklb_baseline.yaml
+# sparkles journal compare -c ... --run <run_id> --split val
 ```
 
-**Phase 1 smoke:** same `--config`, in order: **`ingest`** (once per range / `--force` refresh) → **`label`** → **`train`** → **`report`**. **`report`** prints whether ingest/labeled Parquet exist, the **latest** training run under **`artifacts/{SYMBOL}/`** (or **`--run <run_id>`**), and the last few **`experiments.jsonl`** rows for that symbol.
+**Phase 1 smoke:** same `--config`, in order: **`ingest`** (once per range / `--force` refresh) → **`label`** → **`train`** → **`report`**. **`report`** prints whether ingest/labeled Parquet exist, **model / train / feature parameters from the current YAML**, the **latest** run’s **`metrics.json`** (accuracies, `classes`, **`features`** as stored at train time), the **last few `experiments.jsonl` rows** for the symbol (each line includes model type/solver, class_weight, feature flags, optional experiment name/notes), and optional **`--run <run_id>`** to pin a specific artifact folder.
 
 ## Config loading in code
 

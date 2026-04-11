@@ -61,5 +61,6 @@ module = [
     "sklearn.linear_model",
     "sklearn.metrics",
     "sklearn.preprocessing",
+    "sklearn.utils.class_weight",
 ]
 ignore_missing_imports = true

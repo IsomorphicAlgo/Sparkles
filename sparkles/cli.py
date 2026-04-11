@@ -15,6 +15,7 @@ import typer
 
 from sparkles.config import load_experiment_config
 from sparkles.data.ingest import run_ingest
+from sparkles.journal.compare import run_journal_compare
 from sparkles.labels.triple_barrier import run_label
 from sparkles.models.train import run_train
 from sparkles.reporting.summary import run_phase1_report
@@ -30,6 +31,12 @@ risk_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(risk_app, name="risk")
+
+journal_app = typer.Typer(
+    help="Optional personal trade journal vs model predictions.",
+    no_args_is_help=True,
+)
+app.add_typer(journal_app, name="journal")
 
 _DEFAULT_CONFIG = Path("configs/experiments/rklb_baseline.yaml")
 
@@ -184,7 +191,7 @@ def train(
         help="Progress logging",
     ),
 ) -> None:
-    """Fit baseline classifier; write ``model_bundle.joblib`` + ``metrics.json``."""
+    """Fit classifier; write bundle, metrics.json, and predictions export (see train.export_predictions)."""
     logging.basicConfig(
         level=logging.DEBUG if verbose else logging.INFO,
         format="%(levelname)s %(name)s: %(message)s",
@@ -201,10 +208,108 @@ def train(
     if metrics_path.is_file():
         m = json.loads(metrics_path.read_text(encoding="utf-8"))
         typer.echo(
+            f"model_type={m.get('model_type', '?')}  "
             f"train_accuracy={m['train_accuracy']:.4f}  "
             f"val_accuracy={m['val_accuracy']:.4f}  "
             f"train_n={m['train_n']}  val_n={m['val_n']}",
         )
+
+
+@journal_app.command("compare")
+def journal_compare(
+    config: Path | None = typer.Option(
+        None,
+        "--config",
+        "-c",
+        exists=True,
+        dir_okay=False,
+        help="Experiment YAML (journal.csv_path + symbol)",
+    ),
+    run_id: str | None = typer.Option(
+        None,
+        "--run",
+        help="Run id under artifacts/SYMBOL/ (default: latest with predictions)",
+    ),
+    split: str = typer.Option(
+        "val",
+        "--split",
+        help="Aggregate predictions for this split: val, train, or both",
+    ),
+) -> None:
+    """Join journal CSV to predictions; write journal_compare.csv in the run folder."""
+    cfg_path = _resolve_config(config)
+    cfg = load_experiment_config(cfg_path)
+    root = Path.cwd()
+    sym_dir = root / cfg.paths.artifacts_dir / cfg.symbol.upper()
+    if not sym_dir.is_dir():
+        typer.secho(
+            f"No artifact directory for symbol: {sym_dir}",
+            err=True,
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
+
+    run_dir: Path | None = None
+    if run_id:
+        cand = sym_dir / run_id
+        if (cand / "predictions.parquet").is_file():
+            run_dir = cand
+        else:
+            typer.secho(
+                f"No predictions.parquet in {cand}",
+                err=True,
+                fg=typer.colors.RED,
+            )
+            raise typer.Exit(code=1)
+    else:
+        subdirs = [p for p in sym_dir.iterdir() if p.is_dir()]
+        subdirs.sort(key=lambda x: x.name, reverse=True)
+        for p in subdirs:
+            if (p / "predictions.parquet").is_file():
+                run_dir = p
+                break
+        if run_dir is None:
+            typer.secho(
+                "No run with predictions.parquet found; train with "
+                "train.export_predictions: val or all.",
+                err=True,
+                fg=typer.colors.RED,
+            )
+            raise typer.Exit(code=1)
+
+    split_filter: str | None
+    if split == "both":
+        split_filter = None
+    elif split in ("val", "train"):
+        split_filter = split
+    else:
+        typer.secho(
+            "--split must be val, train, or both",
+            err=True,
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
+
+    try:
+        merged, out_csv = run_journal_compare(
+            cfg,
+            run_dir,
+            split_filter=split_filter,
+            base_dir=root,
+        )
+    except (FileNotFoundError, ValueError) as e:
+        typer.secho(str(e), err=True, fg=typer.colors.RED)
+        raise typer.Exit(code=1) from e
+
+    typer.echo(str(out_csv.resolve()))
+    n_match = (
+        int(merged["model_matched"].sum())
+        if len(merged) and "model_matched" in merged.columns
+        else 0
+    )
+    typer.echo(f"rows={len(merged)}  matched={n_match}")
+    if len(merged):
+        typer.echo(merged.head(12).to_string(index=False))
 
 
 @app.command()

@@ -38,7 +38,30 @@ rolling_business_days: 5
 
 model:
   type: logistic_regression
+  # type: xgboost_classifier   # requires: pip install -e ".[ml]"
   random_seed: 42
+  # solver: lbfgs
+  # tol: 0.0001
+  # class_weight: balanced
+
+# train:
+#   min_train_rows: 1
+#   min_val_rows: 1
+#   drop_val_unseen_classes: true
+#   experiment_name: null
+#   notes: null
+#   export_predictions: val   # val | all | none — predictions.parquet next to metrics
+
+# Optional personal trades (see data/journal/README.md, configs/examples/journal_trades.example.csv)
+# journal:
+#   csv_path: data/journal/my_trades.csv
+
+# Entry-time feature groups (Phase B). All default true if omitted.
+features:
+  log_entry_close: true
+  label_geometry: true
+  intraday_range_pct: true
+  log1p_volume: true
 
 paths:
   cache_dir: data/cache

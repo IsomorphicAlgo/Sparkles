@@ -8,7 +8,18 @@ from __future__ import annotations
 from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+ModelKind = Literal["logistic_regression", "xgboost_classifier"]
+
+LogisticSolver = Literal[
+    "lbfgs",
+    "liblinear",
+    "newton-cg",
+    "newton-cholesky",
+    "sag",
+    "saga",
+]
 
 
 class ModelConfig(BaseModel):
@@ -16,9 +27,12 @@ class ModelConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    type: str = Field(
+    type: ModelKind = Field(
         default="logistic_regression",
-        description="Estimator name, e.g. logistic_regression, xgb_classifier",
+        description=(
+            "Classifier: logistic_regression (core) or "
+            "xgboost_classifier ([ml] extra)"
+        ),
     )
     random_seed: int = Field(default=42, ge=0)
     logistic_c: float = Field(
@@ -31,6 +45,161 @@ class ModelConfig(BaseModel):
         ge=100,
         le=100_000,
         description="Max iterations for iterative solvers (logistic_regression)",
+    )
+    solver: LogisticSolver = Field(
+        default="lbfgs",
+        description="sklearn LogisticRegression solver",
+    )
+    tol: float = Field(
+        default=1e-4,
+        gt=0,
+        le=1.0,
+        description="sklearn LogisticRegression stopping tolerance",
+    )
+    class_weight: None | Literal["balanced"] | dict[str, float] = Field(
+        default=None,
+        description="None, 'balanced', or {barrier_outcome class name: weight}",
+    )
+
+    @field_validator("class_weight", mode="before")
+    @classmethod
+    def coerce_class_weight(cls, v: object) -> object:
+        if v is None or v == "balanced":
+            return v
+        if isinstance(v, dict):
+            out: dict[str, float] = {}
+            for k, w in v.items():
+                out[str(k)] = float(w)  # YAML may use numeric keys
+            return out
+        if isinstance(v, str):
+            raise ValueError(
+                "model.class_weight string must be 'balanced' or omit for None",
+            )
+        raise TypeError("model.class_weight must be null, 'balanced', or a mapping")
+
+    # XGBoost when type == xgboost_classifier (optional pip install -e ".[ml]").
+    xgb_n_estimators: int = Field(
+        default=100,
+        ge=1,
+        le=50_000,
+        description="XGBClassifier n_estimators",
+    )
+    xgb_max_depth: int = Field(
+        default=6,
+        ge=1,
+        le=30,
+        description="XGBClassifier max_depth",
+    )
+    xgb_learning_rate: float = Field(
+        default=0.1,
+        gt=0,
+        le=1.0,
+        description="XGBClassifier learning_rate",
+    )
+    xgb_subsample: float = Field(
+        default=1.0,
+        gt=0,
+        le=1.0,
+        description="XGBClassifier subsample",
+    )
+    xgb_colsample_bytree: float = Field(
+        default=1.0,
+        gt=0,
+        le=1.0,
+        description="XGBClassifier colsample_bytree",
+    )
+    xgb_min_child_weight: float = Field(
+        default=1.0,
+        ge=0,
+        description="XGBClassifier min_child_weight",
+    )
+
+
+class FeatureConfig(BaseModel):
+    """Entry-time feature groups toggled from YAML (ML expansion Phase B).
+
+    Each ``True`` flag includes one builder block in ``sparkles/features/registry.py``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    log_entry_close: bool = Field(
+        default=True,
+        description="log of entry_close (from labels)",
+    )
+    label_geometry: bool = Field(
+        default=True,
+        description="sigma_ann_at_entry, vol_scale_ratio, tp_move_effective, sl_move",
+    )
+    intraday_range_pct: bool = Field(
+        default=True,
+        description="(high-low)/entry_close on the entry bar from OHLCV",
+    )
+    log1p_volume: bool = Field(
+        default=True,
+        description="log1p(volume) on the entry bar",
+    )
+
+    @model_validator(mode="after")
+    def at_least_one_group(self) -> FeatureConfig:
+        if not any(
+            (
+                self.log_entry_close,
+                self.label_geometry,
+                self.intraday_range_pct,
+                self.log1p_volume,
+            ),
+        ):
+            raise ValueError(
+                "features: enable at least one of log_entry_close, label_geometry, "
+                "intraday_range_pct, log1p_volume",
+            )
+        return self
+
+
+class TrainConfig(BaseModel):
+    """Training run options (ML expansion Phase A)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    min_train_rows: int = Field(
+        default=1,
+        ge=1,
+        description="Minimum labeled train rows after the date split (before fit)",
+    )
+    min_val_rows: int = Field(
+        default=1,
+        ge=1,
+        description="Minimum val rows after optional unseen-class filtering",
+    )
+    drop_val_unseen_classes: bool = Field(
+        default=True,
+        description="If true, drop val rows whose outcome was not seen in train",
+    )
+    experiment_name: str | None = Field(
+        default=None,
+        description="Optional short name appended to experiments.jsonl",
+    )
+    notes: str | None = Field(
+        default=None,
+        description="Optional free-text note stored in experiments.jsonl",
+    )
+    export_predictions: Literal["none", "val", "all"] = Field(
+        default="val",
+        description=(
+            "Write predictions.parquet: val rows, train+val, or none (skip file)"
+        ),
+    )
+
+
+class JournalConfig(BaseModel):
+    """Optional personal trade log for alignment with model predictions (CSV)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    csv_path: str | None = Field(
+        default=None,
+        description="Path to trades CSV (repo-relative or absolute); see DEVELOPER.md",
     )
 
 
@@ -127,6 +296,9 @@ class ExperimentConfig(BaseModel):
     val_end: date | None = None
 
     model: ModelConfig = Field(default_factory=lambda: ModelConfig())
+    train: TrainConfig = Field(default_factory=lambda: TrainConfig())
+    features: FeatureConfig = Field(default_factory=lambda: FeatureConfig())
+    journal: JournalConfig = Field(default_factory=lambda: JournalConfig())
     paths: PathsConfig = Field(default_factory=lambda: PathsConfig())
 
     @model_validator(mode="after")

@@ -1,6 +1,6 @@
 # Sparkles — methodology
 
-This document describes **what** we are building and **why**, at a level suitable for you or a future contributor. Operational “where to click” detail lives in **[README.md](README.md)** and **[DEVELOPER.md](DEVELOPER.md)**. The **approval-gated roadmap** and history live in **[plan.md](plan.md)**.
+This document describes **what** we are building and **why**, at a level suitable for you or a future contributor. **§9** is an expanded **how to run** guide (CLI, install options, train/report behavior). **§10** collects **tips and tricks** for training and parameter choices. Operational “where to edit” detail lives in **[DEVELOPER.md](DEVELOPER.md)**; the repo quick start is **[README.md](README.md)**. The **approval-gated roadmap** and history live in **[plan.md](plan.md)**.
 
 ---
 
@@ -61,7 +61,13 @@ Each run is driven by a **YAML experiment file** (e.g. `configs/experiments/rklb
 - Triple-barrier **base** take-profit and stop (e.g. 15% / 5%), **volatility lookback**, **vertical** (time) barrier, and **`min_profit_per_trade_pct`** (floor on the effective take-profit move after vol scaling).
 - Day-trade cap parameters (`max_day_trades`, `rolling_business_days`).
 - Ingest throttling and TwelveData options (chunk days, sleep between chunks, per-minute credit wait, `outputsize`, timeouts, retries).
-- Paths for cache and future artifacts.
+- Paths for cache and artifacts (`paths.cache_dir`, `paths.artifacts_dir`).
+- **`model:`** — classifier family and hyperparameters: `type` is **`logistic_regression`** (always available) or **`xgboost_classifier`** (requires optional install **`pip install -e ".[ml]"`**). Logistic options include `solver`, `tol`, `logistic_c`, `max_iter`, `class_weight`. XGBoost options include `xgb_n_estimators`, `xgb_max_depth`, `xgb_learning_rate`, and related knobs (see **`DEVELOPER.md`**).
+- **`train:`** — minimum train/val row counts, val unseen-class handling, optional `experiment_name` / `notes`, and **`export_predictions`** (`val` / `all` / `none`) for **`predictions.parquet`** next to **`metrics.json`**.
+- **`journal:`** (optional) — **`csv_path`** to a personal trade log for **`sparkles journal compare`** (see §9.5).
+- **`features:`** — toggles for **entry-time** feature groups (e.g. label geometry, intraday range, volume). Turning a group off changes the feature matrix without editing Python; see **`DEVELOPER.md`** for the column map.
+
+Details and file pointers: **`DEVELOPER.md`**. Broader ML roadmap (phases beyond Phase 1): **`docs/ML_EXPANSION.md`**.
 
 ---
 
@@ -75,8 +81,8 @@ Work proceeds in **iterations** documented in **`plan.md`**; the next stage star
 | **Volatility** | Daily-close log returns → rolling std over `vol_lookback_trading_days`, **`shift(1)`**, √252 annualization; broadcast to every 1m bar on that session date (`sparkles/features/volatility.py`). |
 | **Labels (triple barrier)** | For each candidate entry time: upper barrier (take-profit path), lower barrier (stop), vertical barrier (max holding time). Moves scaled by **recent volatility** vs a reference; effective TP floored by **`min_profit_per_trade_pct`**. Path uses **full 1m forward path**, including **same-day** touches (labels match intraday reality). |
 | **Day-trade ledger** | Rolling **weekday** window (`rolling_business_days`), **≤ `max_day_trades`** day-trade **events**; for backtests and **future** simulation/advisory logic (holidays not excluded in v1). |
-| **Features + train** | Entry-only feature join (`sparkles/features/dataset.py`); session-date train/val from YAML; **`sparkles train`** → `artifacts/{SYMBOL}/{run_id}/model_bundle.joblib` + `metrics.json` + **`experiments.jsonl`**. |
-| **Closure** | **`sparkles report`**, train prints headline metrics, README/DEVELOPER smoke path; formal Phase 1 sign-off in **`plan.md`**. |
+| **Features + train** | Entry-only **`features:`** join; session-date split; **`model.type`** via **`estimators.py`**; **`sparkles train`** → bundle + **`metrics.json`** + optional **`predictions.parquet`** + **`experiments.jsonl`**. |
+| **Closure** | **`sparkles report`** (cache paths, full YAML parameter summary, latest **`metrics.json`**, **`experiments.jsonl`** tail); train prints headline metrics; formal Phase 1 sign-off in **`plan.md`**. |
 
 ---
 
@@ -84,7 +90,7 @@ Work proceeds in **iterations** documented in **`plan.md`**; the next stage star
 
 - **Supervised learning** on **triple-barrier outcomes** (e.g. which barrier hit first, or derived binary/ternary targets).
 - **Validation**: time-based / walk-forward splits—not random row splits—for series data.
-- **Model code** is intentionally **editable** in one place (`train.py`) with hyperparameters mirrored in YAML where stable.
+- **Orchestration** lives in **`sparkles/models/train.py`** (load → features → split → fit → save). **Estimator choice and factory** live in **`sparkles/models/estimators.py`**; stable hyperparameters belong in YAML under **`model:`** (and **`features:`**, **`train:`**) so runs stay reproducible and comparable.
 
 ---
 
@@ -107,7 +113,7 @@ This overlaps with **[Purpose and general use](#purpose-and-general-use-read-thi
 | File | Use |
 |------|-----|
 | **README.md** | Repo overview and quick start (GitHub landing). |
-| **METHODOLOGY.md** | This file — concepts and methodology. |
+| **METHODOLOGY.md** | This file — concepts, methodology, **how to run** (§9), **tips** (§10). |
 | **DEVELOPER.md** | Where to edit symbol, training file, ingest knobs. |
 | **plan.md** | Iterations, approvals, append-only progress log. |
 | **[docs/README.md](docs/README.md)** | Index of files under `docs/`. |
@@ -115,7 +121,7 @@ This overlaps with **[Purpose and general use](#purpose-and-general-use-read-thi
 
 ---
 
-## 9. Terminal examples (copy-paste)
+## 9. How to run the program (terminal)
 
 From the **repository root**, with your experiment YAML (default path used below). Set **`TWELVEDATA_API_KEY`** first (environment or `.env` per **`.env.example`**).
 
@@ -126,33 +132,45 @@ $env:TWELVEDATA_API_KEY = "your_key_here"
 cd "C:\path\to\Sparkles"
 ```
 
-**Install (once per venv):**
+### 9.1 Install
+
+**Core + developer tools** (lint, types, tests):
 
 ```bash
 python -m pip install -e ".[dev]"
 ```
 
-**Historical ingest** (writes 1m Parquet under `data/cache/`; prints absolute path):
+**Optional XGBoost** (only if `model.type: xgboost_classifier` in YAML):
+
+```bash
+python -m pip install -e ".[dev,ml]"
+```
+
+### 9.2 Data and labels
+
+**Historical ingest** — downloads the configured `data_start`–`data_end` window, writes 1m Parquet under `paths.cache_dir` (default `data/cache/`), prints the **absolute path** to the file:
 
 ```bash
 sparkles ingest -c configs/experiments/rklb_baseline.yaml
 ```
 
-Verbose chunk logging; **force** full re-download ignoring cache age:
+Verbose chunk logging; **force** a full re-download (ignores cache age; uses API credits):
 
 ```bash
 sparkles ingest -c configs/experiments/rklb_baseline.yaml -v
 sparkles ingest -c configs/experiments/rklb_baseline.yaml --force -v
 ```
 
-**Triple-barrier labels** (needs ingest Parquet for the same `symbol` + `data_start` / `data_end`; prints path + outcome counts):
+**Triple-barrier labels** — needs the ingest Parquet for the same `symbol`, `data_start`, and `data_end`. Writes labeled Parquet, prints path and **`barrier_outcome`** value counts:
 
 ```bash
 sparkles label -c configs/experiments/rklb_baseline.yaml
 sparkles label -c configs/experiments/rklb_baseline.yaml -v
 ```
 
-**Day-trade cap dry-run** (uses `max_day_trades` / `rolling_business_days` from YAML):
+### 9.3 Risk (day-trade cap)
+
+Dry-run using **`max_day_trades`** and **`rolling_business_days`** from the YAML (ledger is for future backtests / advisory; not applied inside the labeler today):
 
 ```bash
 sparkles risk day-trades -c configs/experiments/rklb_baseline.yaml
@@ -160,21 +178,48 @@ sparkles risk day-trades -c configs/experiments/rklb_baseline.yaml --as-of 2026-
 sparkles risk day-trades -c configs/experiments/rklb_baseline.yaml --as-of 2026-04-01 --history 2026-03-25,2026-03-26
 ```
 
-**Train** (needs labeled Parquet + `train_*` / `val_*` in YAML; prints run dir + headline metrics):
+### 9.4 Train
+
+**Prerequisites:** labeled Parquet exists, and **`train_start` / `train_end` / `val_start` / `val_end`** are set in the YAML.
+
+**What it does:** builds the feature matrix from **`features:`**, time-splits by **US session date**, fits **`model.type`** (`logistic_regression` or `xgboost_classifier` with **`[ml]`**), writes **`artifacts/{SYMBOL}/{run_id}/`**: **`model_bundle.joblib`**, **`metrics.json`**, and (unless **`train.export_predictions: none`**) **`predictions.parquet`** with per-row **`entry_time`**, **`session_date`**, **`split`**, **`y_true`**, **`y_pred`**, and probability columns when supported. Appends one line to **`artifacts/experiments.jsonl`**.
 
 ```bash
 sparkles train -c configs/experiments/rklb_baseline.yaml
 sparkles train -c configs/experiments/rklb_baseline.yaml -v
 ```
 
-**Report** (ingest/label paths, latest `metrics.json`, tail of `experiments.jsonl`; optional specific run folder):
+On success, the CLI prints the **artifact directory**, **`model_type`**, train/val accuracy, and row counts.
+
+### 9.5 Journal compare (optional)
+
+If **`journal.csv_path`** is set in YAML to a CSV of **your** trades, **`sparkles journal compare`** left-joins that file to **aggregated** model predictions by **entry session date**. Use this to line up “what I did on day X” with “what the model saw on labeled entries that day.” **Long holds** are fine: one journal row per **open**, with **`exit_date`** months later if you like; alignment uses **entry date** only (not daily P&L over the hold). See **`data/journal/README.md`** and **`configs/examples/journal_trades.example.csv`**.
+
+```bash
+sparkles journal compare -c configs/experiments/rklb_baseline.yaml
+sparkles journal compare -c configs/experiments/rklb_baseline.yaml --run 20260411T015314_621888Z
+sparkles journal compare -c configs/experiments/rklb_baseline.yaml --split val
+```
+
+**`--split`** controls which prediction rows are rolled up before the join: **`val`** (default), **`train`**, or **`both`**. Output: **`journal_compare.csv`** in the chosen run directory.
+
+### 9.6 Report (smoke and audit)
+
+**`sparkles report`** prints a structured summary in one go:
+
+- Whether **ingest** and **labeled** Parquet paths exist (and resolved paths).
+- **Parameters from the current YAML** — splits, labeling knobs, ingest throttling headline, **`model:`**, **`train:`**, and compact **`features:`** JSON.
+- **Latest training run** (or the run given by **`--run <run_id>`**): headline **`metrics.json`** lines including **`model_type`**, accuracies, **`classes`**, and the **`features`** dict **as stored at train time** (useful if you edited YAML after training).
+- **Tail of `experiments.jsonl`** for that symbol — each line includes run id, val accuracy, model type/solver (or XGBoost marker), class weight, feature flags, optional experiment name/notes.
 
 ```bash
 sparkles report -c configs/experiments/rklb_baseline.yaml
 sparkles report -c configs/experiments/rklb_baseline.yaml --run 20260411T015314_621888Z
 ```
 
-**Typical Phase 1 order** (same `--config` throughout):
+### 9.7 Typical end-to-end order
+
+Use the **same `--config`** path for every step:
 
 ```bash
 sparkles ingest -c configs/experiments/rklb_baseline.yaml -v
@@ -183,7 +228,7 @@ sparkles train -c configs/experiments/rklb_baseline.yaml
 sparkles report -c configs/experiments/rklb_baseline.yaml
 ```
 
-**Help:**
+### 9.8 Help
 
 ```bash
 sparkles --help
@@ -191,5 +236,32 @@ sparkles ingest --help
 sparkles label --help
 sparkles risk day-trades --help
 sparkles train --help
+sparkles journal compare --help
 sparkles report --help
 ```
+
+---
+
+## 10. Tips and tricks (training and parameters)
+
+These are practical reminders aligned with what Sparkles is trying to achieve: **honest offline research**, **no leakage**, and **runs you can compare**.
+
+- **Separate “label world” from “model world.”** Changing barriers, `min_profit_per_trade_pct`, `label_entry_stride`, vol lookback, or the ingest date range changes **labels** (and usually requires **`label`** again, and possibly **`ingest`**). Changing only **`model:`**, **`train:`**, or **`features:`** typically needs **`train`** (and **`report`**) only. Mixing the two without re-running steps is a common source of confusion.
+
+- **Trust the time split, not random shuffles.** Train and validation are separated by **calendar session dates** in the exchange timezone. Do not evaluate with a random row split on the same file; it will overstate quality on sequential market data.
+
+- **Watch class balance.** Triple-barrier outcomes are often **imbalanced**. Use **`report`** and **`metrics.json`** (and outcome counts from **`label`**) to see whether accuracy is meaningful. YAML **`model.class_weight`** helps logistic regression; for **XGBoost**, the same setting is translated into **per-row sample weights** on fit.
+
+- **YAML vs artifacts.** After you train, **`metrics.json`** and **`experiments.jsonl`** record **`model_type`** and **`features`** as they were **at train time**. **`report`** shows both the **current YAML** and the **stored metrics** so you can spot drift (e.g. you changed `features:` but did not retrain).
+
+- **Feature toggles are causal, not cosmetic.** Disabled groups remove columns from **X**; keep at least one group enabled. All enabled columns still use only information **at the entry bar** (no future path in **X**).
+
+- **API credits when iterating on data.** Re-running **`ingest --force`** on a long window burns **TwelveData** credits. Prefer **`train`** / **`report`** while tuning model and feature YAML on a fixed cache when possible.
+
+- **XGBoost vs logistic.** Logistic regression is **fast, interpretable, and dependency-light**. XGBoost can capture nonlinearity but needs **`[ml]`**, tuning, and care not to **overfit** small or noisy regimes—compare runs using the same splits and check val behavior, not only train accuracy.
+
+- **`train.drop_val_unseen_classes`.** If the validation period contains **outcome labels never seen in train**, the default is to **drop** those val rows (with a log warning). If you set this to **`false`**, training **fails** when that situation occurs—useful to force yourself to fix date ranges or class coverage instead of silently skewing metrics.
+
+- **Ledger vs labels.** The **day-trade ledger** encodes a **3-in-5** style cap for **future** simulation or advice. **Triple-barrier labels** still use the **full intraday path** for the mechanistic outcome. Do not assume the ledger “fixed” label semantics unless you build a separate labeling mode for that.
+
+- **Journal vs model targets.** **`journal compare`** merges your **real** entries to **triple-barrier** prediction rows by **date**; it does not equate your hold horizon (e.g. six months) with the label horizon. Use it as a qualitative alignment tool, not a guarantee that the model was trained to replicate your style.

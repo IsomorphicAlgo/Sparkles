@@ -6,15 +6,12 @@ Features use only information available **at the entry bar** (same timestamp as
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-import numpy as np
 import pandas as pd
 
+from sparkles.config.schema import ExperimentConfig, FeatureConfig
+from sparkles.features.builders import EntryFeatureContext
+from sparkles.features.registry import assemble_feature_columns
 from sparkles.features.volatility import ensure_exchange_tz_index
-
-if TYPE_CHECKING:
-    from sparkles.config.schema import ExperimentConfig
 
 
 def entry_session_dates(
@@ -25,6 +22,29 @@ def entry_session_dates(
     ix = ensure_exchange_tz_index(pd.DatetimeIndex(index), exchange_timezone)
     norm = pd.DatetimeIndex(ix).normalize()
     return pd.Series(norm.date, index=index, dtype=object)
+
+
+def _required_label_columns(fc: FeatureConfig) -> set[str]:
+    need: set[str] = {"barrier_outcome"}
+    if fc.log_entry_close or fc.intraday_range_pct:
+        need.add("entry_close")
+    if fc.label_geometry:
+        need.update(
+            {
+                "sigma_ann_at_entry",
+                "vol_scale_ratio",
+                "tp_move_effective",
+                "sl_move",
+            },
+        )
+    return need
+
+
+def _required_ohlcv_columns(fc: FeatureConfig) -> set[str]:
+    need: set[str] = {"close"}
+    if fc.intraday_range_pct:
+        need.update({"high", "low"})
+    return need
 
 
 def build_feature_matrix(
@@ -38,17 +58,16 @@ def build_feature_matrix(
     """
     if labels.empty:
         raise ValueError("labels DataFrame is empty")
-    need_l = {
-        "entry_close",
-        "barrier_outcome",
-        "sigma_ann_at_entry",
-        "vol_scale_ratio",
-        "tp_move_effective",
-        "sl_move",
-    }
+    fc = cfg.features
+    need_l = _required_label_columns(fc)
     miss = need_l - set(labels.columns)
     if miss:
         raise KeyError(f"labels missing columns: {sorted(miss)}")
+
+    need_o = _required_ohlcv_columns(fc)
+    miss_o = need_o - set(ohlcv.columns)
+    if miss_o:
+        raise KeyError(f"ohlcv missing columns for enabled features: {sorted(miss_o)}")
 
     aligned = ohlcv.reindex(labels.index)
     bad = aligned["close"].isna()
@@ -58,26 +77,12 @@ def build_feature_matrix(
         labels = labels.loc[~bad]
         aligned = aligned.loc[~bad]
 
-    close = labels["entry_close"].astype(np.float64)
-    hi = aligned["high"].astype(np.float64)
-    lo = aligned["low"].astype(np.float64)
-    if "volume" in aligned.columns:
-        vol = aligned["volume"].astype(np.float64)
-    else:
-        vol = pd.Series(0.0, index=aligned.index, dtype=np.float64)
-
-    X = pd.DataFrame(
-        {
-            "log_entry_close": np.log(close.clip(lower=1e-12)),
-            "sigma_ann_at_entry": labels["sigma_ann_at_entry"].astype(np.float64),
-            "vol_scale_ratio": labels["vol_scale_ratio"].astype(np.float64),
-            "tp_move_effective": labels["tp_move_effective"].astype(np.float64),
-            "sl_move": labels["sl_move"].astype(np.float64),
-            "intraday_range_pct": (hi - lo) / close.clip(lower=1e-12),
-            "log1p_volume": np.log1p(np.maximum(vol, 0.0)),
-        },
-        index=labels.index,
+    ctx = EntryFeatureContext(
+        labels=labels,
+        aligned_ohlcv=aligned,
+        entry_close=labels["entry_close"],
     )
+    X = assemble_feature_columns(ctx, fc)
     y = labels["barrier_outcome"].astype(str).copy()
     return X, y
 
