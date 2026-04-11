@@ -20,6 +20,10 @@ from sparkles.labels.triple_barrier import run_label
 from sparkles.models.train import run_train
 from sparkles.reporting.summary import run_phase1_report
 from sparkles.risk.day_trade_ledger import DayTradeLedger
+from sparkles.tracking.experiments_csv import (
+    experiments_log_path,
+    export_experiments_to_csv,
+)
 
 app = typer.Typer(
     help="Sparkles swing ML pipeline (Phase 1). Use --config for experiment YAML.",
@@ -37,6 +41,12 @@ journal_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(journal_app, name="journal")
+
+experiments_app = typer.Typer(
+    help="Training experiment log (experiments.jsonl) utilities.",
+    no_args_is_help=True,
+)
+app.add_typer(experiments_app, name="experiments")
 
 _DEFAULT_CONFIG = Path("configs/experiments/rklb_baseline.yaml")
 
@@ -191,7 +201,7 @@ def train(
         help="Progress logging",
     ),
 ) -> None:
-    """Fit classifier; write bundle, metrics.json, and predictions export (see train.export_predictions)."""
+    """Fit classifier; write bundle, metrics, experiment_config.json, predictions."""
     logging.basicConfig(
         level=logging.DEBUG if verbose else logging.INFO,
         format="%(levelname)s %(name)s: %(message)s",
@@ -310,6 +320,47 @@ def journal_compare(
     typer.echo(f"rows={len(merged)}  matched={n_match}")
     if len(merged):
         typer.echo(merged.head(12).to_string(index=False))
+
+
+@experiments_app.command("export")
+def experiments_export(
+    config: Path | None = typer.Option(
+        None,
+        "--config",
+        "-c",
+        exists=True,
+        dir_okay=False,
+        help="Experiment YAML (for paths.artifacts_dir and default symbol filter)",
+    ),
+    output: Path = typer.Option(
+        Path("artifacts/training_log.csv"),
+        "--output",
+        "-o",
+        help="Output CSV path (default: artifacts/training_log.csv)",
+    ),
+    all_symbols: bool = typer.Option(
+        False,
+        "--all-symbols",
+        help="Include all symbols in the log (default: only YAML symbol)",
+    ),
+) -> None:
+    """Export experiments.jsonl to a wide CSV (flattened settings + metrics)."""
+    cfg_path = _resolve_config(config)
+    cfg = load_experiment_config(cfg_path)
+    root = Path.cwd()
+    log_path = experiments_log_path(cfg, base_dir=root)
+    sym = None if all_symbols else cfg.symbol.upper()
+    try:
+        n = export_experiments_to_csv(
+            log_path,
+            output.resolve(),
+            symbol_filter=sym,
+        )
+    except FileNotFoundError as e:
+        typer.secho(str(e), err=True, fg=typer.colors.RED)
+        raise typer.Exit(code=1) from e
+    typer.echo(str(output.resolve()))
+    typer.echo(f"rows={n}")
 
 
 @app.command()

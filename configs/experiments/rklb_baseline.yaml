@@ -24,13 +24,18 @@ val_end: 2026-03-30
 
 # Triple barrier (fractions: 0.15 = 15%)
 profit_barrier_base: 0.15
-stop_loss_base: 0.05
+stop_loss_base: 0.1 #0.05
 # Floor on take-profit *move* after vol scaling (0.02 = 2%)
 min_profit_per_trade_pct: 0.1
 
 vol_lookback_trading_days: 20
 vertical_max_trading_days: 10
 vol_ref_method: median
+
+# Candidate entry bars: indices 0, N, 2N, ... (1m rows). Filename includes _s{N}.
+# 390 ≈ one entry per regular US RTH session (~6.5h of consecutive minutes); use 1 for
+# every minute (many more label rows, slower `sparkles label`, highly correlated samples).
+label_entry_stride: 390 #390
 
 # Day-trade budget (conservative vs PDT)
 max_day_trades: 3
@@ -41,8 +46,8 @@ model:
   # type: xgboost_classifier   # requires: pip install -e ".[ml]"
   random_seed: 42
   # solver: lbfgs
-  # tol: 0.0001
-  # class_weight: balanced
+  tol: 0.0001 # 0.0001
+  class_weight: balanced
 
 # train:
 #   min_train_rows: 1

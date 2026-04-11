@@ -6,7 +6,7 @@ Quick reference for **where to change what** in Phase 1. Conceptual methodology:
 
 | Path | Role |
 |------|------|
-| **`sparkles/`** | Package: `config`, `data`, `features`, `journal`, `labels`, `models`, `reporting`, `risk`, `tracking`, `cli.py`. |
+| **`sparkles/`** | Package: `config`, `data`, `features`, `journal`, `labels`, `models`, `reporting`, `risk`, `tracking` (`experiments.py`, `experiments_csv.py`), `cli.py`. |
 | **`configs/experiments/`** | Experiment YAML (e.g. `rklb_baseline.yaml`); validated by `sparkles/config/schema.py`. |
 | **`tests/`** | `pytest` only; mirror modules under `sparkles/` where practical. |
 | **`scripts/`** | Non-installed helpers (e.g. `quick_try_vol.py`); run with `python scripts/...`. |
@@ -25,7 +25,7 @@ Quick reference for **where to change what** in Phase 1. Conceptual methodology:
 
 ## Training code (Python you edit often)
 
-- **File:** `sparkles/models/train.py` — **`run_train(cfg)`** loads labeled + ingest Parquets, **`build_feature_matrix`**, time-splits, fits **`model.type`** via **`sparkles/models/estimators.py`**, writes **`model_bundle.joblib`**, **`metrics.json`**, and (by default) **`predictions.parquet`** per-row **`train.export_predictions`**: **`val`** (validation rows only), **`all`** (train+val), or **`none`**. Columns include **`entry_time`**, **`session_date`**, **`split`**, **`y_true`**, **`y_pred`**, per-class **`proba_*`**, **`max_proba`** when the estimator supports **`predict_proba`**. Path: **`{artifacts_dir}/{SYMBOL}/{run_id}/`**. Appends **`experiments.jsonl`**.
+- **File:** `sparkles/models/train.py` — **`run_train(cfg)`** loads labeled + ingest Parquets, **`build_feature_matrix`**, time-splits, fits **`model.type`** via **`sparkles/models/estimators.py`**, writes **`model_bundle.joblib`**, **`metrics.json`**, **`experiment_config.json`** (full YAML-equivalent snapshot), and (by default) **`predictions.parquet`** per-row **`train.export_predictions`**: **`val`** (validation rows only), **`all`** (train+val), or **`none`**. Columns include **`entry_time`**, **`session_date`**, **`split`**, **`y_true`**, **`y_pred`**, per-class **`proba_*`**, **`max_proba`** when the estimator supports **`predict_proba`**. Path: **`{artifacts_dir}/{SYMBOL}/{run_id}/`**. Appends **`experiments.jsonl`** (includes nested **`experiment_config`** plus headline fields). CSV export: **`sparkles experiments export -c …`** → **`artifacts/training_log.csv`** by default; **`--all-symbols`** exports every symbol in the log.
 - **Estimators:** `sparkles/models/estimators.py` — **`build_estimator`**: `logistic_regression` (sklearn, core deps) or **`xgboost_classifier`** (install **`pip install -e ".[ml]"`**). XGBoost hyperparameters: **`model.xgb_n_estimators`**, **`xgb_max_depth`**, **`xgb_learning_rate`**, **`xgb_subsample`**, **`xgb_colsample_bytree`**, **`xgb_min_child_weight`**. YAML **`model.class_weight`** maps to sklearn for logistic regression and to **`sample_weight`** for XGBoost when not null.
 - **Registry:** `sparkles/models/registry.py` — `new_run_id`, `run_artifact_dir`, `save_bundle`, `save_json`.
 - **Features at entry only:** Controlled by **`features:`** in YAML (`FeatureConfig` in `schema.py`). Each flag includes a builder group from **`sparkles/features/registry.py`** (see **`sparkles/features/builders.py`**):
@@ -41,7 +41,7 @@ Quick reference for **where to change what** in Phase 1. Conceptual methodology:
 ## Labeling and minimum profit per trade
 
 - **Config:** `min_profit_per_trade_pct` in experiment YAML (fraction, e.g. `0.02` = **2%**)
-- **Implementation:** `sparkles/labels/triple_barrier.py` — vol-scaled TP/SL (ratio `sigma_t / sigma_ref` clamped by `barrier_vol_scale_min` / `barrier_vol_scale_max`), then **effective TP move** `max(min_profit_per_trade_pct, tp_move_from_vol)`. Forward scan on 1m `high`/`low`; on a tie in the same bar, **stop** is checked before **take-profit** (pessimistic long). Vertical exit uses **trading-day** count from entry (`vertical_max_trading_days`). Entries are every `label_entry_stride` bars (default **390** ≈ one per regular session).
+- **Implementation:** `sparkles/labels/triple_barrier.py` — vol-scaled TP/SL (ratio `sigma_t / sigma_ref` clamped by `barrier_vol_scale_min` / `barrier_vol_scale_max`), then **effective TP move** `max(min_profit_per_trade_pct, tp_move_from_vol)`. Forward scan on 1m `high`/`low`; on a tie in the same bar, **stop** is checked before **take-profit** (pessimistic long). Vertical exit uses **trading-day** count from entry (`vertical_max_trading_days`). **`label_entry_stride`** in YAML sets how many 1m bars between candidate entries (**`configs/experiments/rklb_baseline.yaml`** documents **`390`** vs **`1`** trade-offs).
 - **CLI:** `sparkles label -c configs/experiments/rklb_baseline.yaml` loads the ingest Parquet for `symbol` + `data_start`/`data_end`, adds vol if missing, writes labeled Parquet, prints `barrier_outcome` value counts. `-v` enables progress logging.
 - **On disk (labeled):** `{SYMBOL}_labeled_{data_start}_{data_end}_s{label_entry_stride}.parquet` under `paths.cache_dir`.
 
@@ -117,6 +117,7 @@ sparkles report -c configs/experiments/rklb_baseline.yaml
 # After train (predictions.parquet) + journal.csv_path in YAML:
 sparkles journal compare -c configs/experiments/rklb_baseline.yaml
 # sparkles journal compare -c ... --run <run_id> --split val
+sparkles experiments export -c configs/experiments/rklb_baseline.yaml
 ```
 
 **Phase 1 smoke:** same `--config`, in order: **`ingest`** (once per range / `--force` refresh) → **`label`** → **`train`** → **`report`**. **`report`** prints whether ingest/labeled Parquet exist, **model / train / feature parameters from the current YAML**, the **latest** run’s **`metrics.json`** (accuracies, `classes`, **`features`** as stored at train time), the **last few `experiments.jsonl` rows** for the symbol (each line includes model type/solver, class_weight, feature flags, optional experiment name/notes), and optional **`--run <run_id>`** to pin a specific artifact folder.

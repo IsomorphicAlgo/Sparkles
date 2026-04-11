@@ -65,6 +65,7 @@ sparkles report -c configs/experiments/rklb_baseline.yaml
 | **[plan.md](plan.md)** | Approval-gated Phase 1 iterations and append-only progress log. |
 | **[docs/README.md](docs/README.md)** | Index of files under `docs/`. |
 | **[docs/ML_EXPANSION.md](docs/ML_EXPANSION.md)** | Post–Phase 1 ML roadmap (preprocessing, dry-run, richer metrics, etc.). |
+| **[docs/plan-phase2-overview.md](docs/plan-phase2-overview.md)** | Phase 2 roadmap (live/interval assistant): linked plans A–C with owner tests. |
 
 ## Security and local data
 
@@ -75,10 +76,11 @@ sparkles report -c configs/experiments/rklb_baseline.yaml
 
 ```text
 sparkles ingest              # historical 1m → Parquet (cache-first, throttled)
-sparkles label               # triple-barrier labels → Parquet + outcome counts
+sparkles label               # triple-barrier labels → Parquet + outcome counts (stride in YAML)
 sparkles risk day-trades     # day-trade cap dry-run from YAML (+ optional history)
 sparkles train               # fit model; bundle + metrics + predictions.parquet (default val)
 sparkles journal compare     # join journal CSV to predictions by entry date (optional)
+sparkles experiments export  # experiments.jsonl → wide CSV (flattened config + metrics)
 sparkles report              # paths + YAML params + latest metrics + experiments tail
 ```
 
@@ -89,6 +91,7 @@ sparkles label --help
 sparkles risk day-trades --help
 sparkles train --help
 sparkles journal compare --help
+sparkles experiments export --help
 sparkles report --help
 ```
 

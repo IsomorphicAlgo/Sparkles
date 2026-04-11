@@ -113,7 +113,7 @@ This overlaps with **[Purpose and general use](#purpose-and-general-use-read-thi
 | File | Use |
 |------|-----|
 | **README.md** | Repo overview and quick start (GitHub landing). |
-| **METHODOLOGY.md** | This file — concepts, methodology, **how to run** (§9), **tips** (§10). |
+| **METHODOLOGY.md** | This file — concepts, methodology, **how to run** (§9), **tips** (§10), **label stride** (§11), **metrics & class_weight** (§12). |
 | **DEVELOPER.md** | Where to edit symbol, training file, ingest knobs. |
 | **plan.md** | Iterations, approvals, append-only progress log. |
 | **[docs/README.md](docs/README.md)** | Index of files under `docs/`. |
@@ -182,7 +182,7 @@ sparkles risk day-trades -c configs/experiments/rklb_baseline.yaml --as-of 2026-
 
 **Prerequisites:** labeled Parquet exists, and **`train_start` / `train_end` / `val_start` / `val_end`** are set in the YAML.
 
-**What it does:** builds the feature matrix from **`features:`**, time-splits by **US session date**, fits **`model.type`** (`logistic_regression` or `xgboost_classifier` with **`[ml]`**), writes **`artifacts/{SYMBOL}/{run_id}/`**: **`model_bundle.joblib`**, **`metrics.json`**, and (unless **`train.export_predictions: none`**) **`predictions.parquet`** with per-row **`entry_time`**, **`session_date`**, **`split`**, **`y_true`**, **`y_pred`**, and probability columns when supported. Appends one line to **`artifacts/experiments.jsonl`**.
+**What it does:** builds the feature matrix from **`features:`**, time-splits by **US session date**, fits **`model.type`** (`logistic_regression` or `xgboost_classifier` with **`[ml]`**), writes **`artifacts/{SYMBOL}/{run_id}/`**: **`model_bundle.joblib`**, **`metrics.json`**, **`experiment_config.json`** (full experiment snapshot, JSON-serializable), and (unless **`train.export_predictions: none`**) **`predictions.parquet`** with per-row **`entry_time`**, **`session_date`**, **`split`**, **`y_true`**, **`y_pred`**, and probability columns when supported. Appends one line to **`artifacts/experiments.jsonl`** including the same snapshot under **`experiment_config`** plus headline metrics.
 
 ```bash
 sparkles train -c configs/experiments/rklb_baseline.yaml
@@ -190,6 +190,14 @@ sparkles train -c configs/experiments/rklb_baseline.yaml -v
 ```
 
 On success, the CLI prints the **artifact directory**, **`model_type`**, train/val accuracy, and row counts.
+
+**Training log (CSV):** flatten **`experiments.jsonl`** for spreadsheets (default: rows for the YAML symbol only; use **`--all-symbols`** for the entire log):
+
+```bash
+sparkles experiments export -c configs/experiments/rklb_baseline.yaml
+sparkles experiments export -c configs/experiments/rklb_baseline.yaml -o out/runs.csv
+sparkles experiments export -c configs/experiments/rklb_baseline.yaml --all-symbols
+```
 
 ### 9.5 Journal compare (optional)
 
@@ -237,6 +245,7 @@ sparkles label --help
 sparkles risk day-trades --help
 sparkles train --help
 sparkles journal compare --help
+sparkles experiments export --help
 sparkles report --help
 ```
 
@@ -265,3 +274,65 @@ These are practical reminders aligned with what Sparkles is trying to achieve: *
 - **Ledger vs labels.** The **day-trade ledger** encodes a **3-in-5** style cap for **future** simulation or advice. **Triple-barrier labels** still use the **full intraday path** for the mechanistic outcome. Do not assume the ledger “fixed” label semantics unless you build a separate labeling mode for that.
 
 - **Journal vs model targets.** **`journal compare`** merges your **real** entries to **triple-barrier** prediction rows by **date**; it does not equate your hold horizon (e.g. six months) with the label horizon. Use it as a qualitative alignment tool, not a guarantee that the model was trained to replicate your style.
+
+---
+
+## 11. Label entry stride (what we are doing and why)
+
+**`label_entry_stride`** in the experiment YAML controls **how densely** we place hypothetical long entries on the 1m grid: bar indices **`0, N, 2N, …`**. It is **explicit** in **`configs/experiments/rklb_baseline.yaml`** so runs are reproducible and the labeled Parquet name (`…_s{N}.parquet`) matches config.
+
+**Default posture (`390`):** About **one candidate entry per regular US session**—a coarse view aligned with “not deciding every minute,” cheaper **`sparkles label`**, and fewer **highly redundant** adjacent rows for training.
+
+**Dense posture (`1`):** **Every minute** is a candidate—richer coverage of intraday paths where a **percentage move can finish inside a session**, at the cost of **much larger** label files, **longer** labeling time, and **strong correlation** between neighboring rows (not independent samples).
+
+**What we hope to accomplish:** Keep **one clear knob** to move between **session-level** and **minute-level** research questions without code changes, while documenting that **PDT / day-trade limits** apply to **execution policy**, not to how many bars we label. Iterating on stride requires **`sparkles label`** again (then **`train`**); see §10 “label world vs model world.”
+
+---
+
+## 12. Where to read `classification_report_val` and how `model.class_weight` works
+
+### 12.1 `classification_report_val` (validation, per class)
+
+After **`sparkles train`**, each run writes **`metrics.json`** under:
+
+**`artifacts/{SYMBOL}/{run_id}/metrics.json`**
+
+(The CLI prints the resolved **`run_id`** folder path when training finishes.)
+
+Inside that JSON, the key **`classification_report_val`** holds the **validation** split report from scikit-learn: for each **`barrier_outcome`** class seen in the encoder, **`precision`**, **`recall`**, **`f1-score`**, and **`support`** (row count). It also includes **`accuracy`**, **`macro avg`**, and **`weighted avg`** over classes.
+
+**Ways to view it:**
+
+- Open **`metrics.json`** in an editor and search for **`classification_report_val`**.
+- **PowerShell** (from repo root, adjust run folder name):
+
+```powershell
+Get-Content "artifacts\RKLB\YOUR_RUN_ID\metrics.json" -Raw | ConvertFrom-Json | Select-Object -ExpandProperty classification_report_val | ConvertTo-Json -Depth 6
+```
+
+- **Python:**
+
+```python
+import json
+from pathlib import Path
+m = json.loads(Path("artifacts/RKLB/YOUR_RUN_ID/metrics.json").read_text(encoding="utf-8"))
+print(json.dumps(m["classification_report_val"], indent=2))
+```
+
+**`sparkles report`** summarizes the **latest** run’s headline numbers; for **full per-class** validation detail, use **`metrics.json`** as above.
+
+### 12.2 `model.class_weight` in experiment YAML
+
+Configured under **`model:`** in **`configs/experiments/*.yaml`**, validated by **`sparkles/config/schema.py`**. Sparkles allows **three** shapes (this is slightly **stricter** than typing every sklearn string by hand):
+
+| YAML form | Meaning |
+|-----------|---------|
+| **Omitted** or **`null`** | No class weighting (**`None`** in sklearn): all training rows weighted equally. |
+| **`balanced`** | sklearn’s **`balanced`** mode: weights are adjusted inversely to class frequency in the **training** labels (helps minority classes like **`take_profit`** / **`vertical`**). |
+| **Mapping (object)** | **Per-class weights**: keys are **`barrier_outcome`** strings (**`stop_loss`**, **`take_profit`**, **`vertical`**, **`end_of_data`** as applicable), values are positive floats. Example: boost rare classes manually. |
+
+**Not supported as a bare string** in YAML (besides **`balanced`**): e.g. sklearn’s historical **`balanced_subsample`** for ensembles is **not** wired for **`logistic_regression`** here—use **`balanced`** or a **dict**.
+
+For **`xgboost_classifier`**, the same **`model.class_weight`** is translated into **per-row sample weights** on **`fit`** (see **`sparkles/models/estimators.py`**): **`null`** → uniform weights, **`balanced`** → sklearn **`compute_sample_weight`**, **dict** → weights by class name then expanded per row.
+
+**Tip:** If validation shows **0 recall** on rare classes with **`class_weight` omitted**, try **`class_weight: balanced`** before hand-tuning a dict; dicts are for when you want **explicit** relative costs (e.g. weight **`take_profit`** higher than **`vertical`**).

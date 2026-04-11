@@ -76,6 +76,7 @@ def test_run_train_writes_artifacts(tmp_path) -> None:
     assert out.is_dir()
     assert (out / "model_bundle.joblib").is_file()
     assert (out / "metrics.json").is_file()
+    assert (out / "experiment_config.json").is_file()
     assert (out / "predictions.parquet").is_file()
     log = tmp_path / "artifacts" / "experiments.jsonl"
     assert log.is_file()
@@ -84,6 +85,10 @@ def test_run_train_writes_artifacts(tmp_path) -> None:
     assert last["model_solver"] == "lbfgs"
     assert last["train_drop_val_unseen_classes"] is True
     assert last["features"]["log_entry_close"] is True
+    assert last["experiment_config"]["symbol"] == "T"
+    assert last["experiment_config"]["model"]["type"] == "logistic_regression"
+    snap = json.loads((out / "experiment_config.json").read_text(encoding="utf-8"))
+    assert snap["symbol"] == "T"
 
 
 def test_run_train_xgboost_writes_artifacts(tmp_path) -> None:

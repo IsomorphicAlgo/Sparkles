@@ -189,6 +189,8 @@ def run_train(
     }
     save_bundle(out_dir / "model_bundle.joblib", bundle)
     save_json(out_dir / "metrics.json", metrics)
+    experiment_snapshot: dict[str, Any] = cfg.model_dump(mode="json")
+    save_json(out_dir / "experiment_config.json", experiment_snapshot)
     if pred_parts:
         pd.concat(pred_parts, axis=0).to_parquet(
             out_dir / "predictions.parquet",
@@ -217,6 +219,7 @@ def run_train(
         "train_drop_val_unseen_classes": tc.drop_val_unseen_classes,
         "features": feat_dump,
         "predictions_export": tc.export_predictions,
+        "experiment_config": experiment_snapshot,
     }
     append_experiment_record(art_root, log_payload)
     logger.info("Saved run to %s", out_dir)
