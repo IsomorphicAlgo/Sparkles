@@ -16,13 +16,13 @@ todos:
     status: complete
   - id: day-trade-limit
     content: "Iteration 5: day_trade_ledger (3 in 5 biz days) + tests + optional CLI hook"
-    status: pending
+    status: complete
   - id: features-train
     content: "Iteration 6: features, train.py, artifacts, experiment logging"
-    status: pending
+    status: complete
   - id: oversight
     content: "Iteration 7: polish CLI gates, README pointer, owner sign-off Phase 1"
-    status: pending
+    status: complete
 isProject: false
 ---
 
@@ -77,7 +77,7 @@ These rules apply to **every** AI agent, script, or contributor working in this 
 - **Deliverables:** `features/volatility.py` (or dedicated module), unit tests for alignment.
 - **Done when:** Tests pass; vol series documented in `DEVELOPER.md`.
 - **Status:** `complete — awaiting approval for Iteration 4`
-- **Owner approval to proceed to Iteration 4:** `[ ]` Date: ___________
+- **Owner approval to proceed to Iteration 4:** `[MH]` Date: 4/9/2026
 
 ### Iteration 4 — Labels
 
@@ -85,29 +85,29 @@ These rules apply to **every** AI agent, script, or contributor working in this 
 - **Deliverables:** `triple_barrier.py`, `types.py`, labeled dataset output path, summary stats on CLI.
 - **Done when:** Owner can run `label` and inspect class/barrier distribution.
 - **Status:** `complete — awaiting approval for Iteration 5`
-- **Owner approval to proceed to Iteration 5:** `[ ]` Date: ___________
+- **Owner approval to proceed to Iteration 5:** `[MH]` Date: 4/10/2026
 
 ### Iteration 5 — Day-trade ledger
 
 - **Goal:** Rolling 5 US business days, max 3 day trades; tests; optional CLI dry-run.
 - **Deliverables:** `sparkles/risk/day_trade_ledger.py`, tests, doc in `DEVELOPER.md`.
 - **Done when:** Tests pass; ledger API documented for future backtest/live.
-- **Status:** `not started`
-- **Owner approval to proceed to Iteration 6:** `[ ]` Date: ___________
+- **Status:** `complete — awaiting approval for Iteration 6`
+- **Owner approval to proceed to Iteration 6:** `[MH]` Date: 4/10/2026
 
 ### Iteration 6 — Features and training
 
 - **Goal:** Feature builders, time-based split, baseline model in **`sparkles/models/train.py`**, artifacts + run logging.
 - **Deliverables:** `features/*`, `train.py`, `registry.py`, `tracking/experiments.py` (or JSONL).
 - **Done when:** Owner can run `train` and get a saved model + metrics.
-- **Status:** `not started`
-- **Owner approval to proceed to Iteration 7:** `[ ]` Date: ___________
+- **Status:** `complete — awaiting approval for Iteration 7`
+- **Owner approval to proceed to Iteration 7:** `[MH]` Date: 4/10/2026
 
 ### Iteration 7 — Phase 1 closure
 
 - **Goal:** CLI polish (`ingest` → `label` → `train`), optional README pointer to `DEVELOPER.md`, owner sign-off.
 - **Deliverables:** End-to-end smoke path documented; frontmatter todos updated to `complete` where true.
-- **Status:** `not started`
+- **Status:** `complete` (code + docs; **formal owner sign-off** is the checkbox below when you are satisfied)
 - **Owner approval (Phase 1 complete):** `[ ]` Date: ___________
 
 ---
@@ -253,3 +253,6 @@ All under package `sparkles/`:
 | 2026-04-09 | **Docs + agent rules:** `.cursor/rules/sparkles-api-credits.mdc` (always apply: preserve API credits). **`METHODOLOGY.md`** (end-to-end methodology). **`README.md`** (GitHub quick start). `plan.md` mandatory rule #6; `pyproject` readme → `README.md`; `DEVELOPER.md` links updated. | `.cursor/rules/`, `METHODOLOGY.md`, `README.md`, `DEVELOPER.md`, `plan.md`, `pyproject.toml` | Iteration 3 approval unchanged |
 | 2026-04-09 | **Iteration 3 complete:** `sparkles/features/volatility.py` — daily last close, rolling log-return std with `shift(1)` (no lookahead), √252 `vol_{N}d_ann` + `sigma_daily_{N}d`, `add_volatility_from_config`. Tests `tests/test_volatility.py`. `DEVELOPER.md` + `METHODOLOGY.md` updated; `features/__init__.py` exports. | `sparkles/features/`, `tests/test_volatility.py`, `DEVELOPER.md`, `METHODOLOGY.md`, `plan.md` | **Blocked until owner approves Iteration 4** (labels) |
 | 2026-04-07 | **Iteration 4 complete:** `triple_barrier.py` — vol-scaled barriers (clamped), min-profit TP floor, trading-day vertical, pessimistic same-bar SL-before-TP; `BarrierOutcome` + `END_OF_DATA`. Config: `barrier_vol_scale_min` / `max`, `label_entry_stride` (default 390). CLI `sparkles label -c …` writes `{SYMBOL}_labeled_{start}_{end}_s{stride}.parquet` and prints `barrier_outcome` value counts. Tests `tests/test_triple_barrier.py`. | `sparkles/labels/`, `sparkles/config/schema.py`, `sparkles/cli.py`, `tests/test_triple_barrier.py`, `DEVELOPER.md`, `plan.md` | **Blocked until owner approves Iteration 5** (day-trade ledger) |
+| 2026-04-10 | **Iteration 5 complete:** `DayTradeLedger` + `rolling_us_business_days_ending` / `anchor_us_weekday_date` (weekdays only; no holiday calendar v1). CLI `sparkles risk day-trades`. Tests `tests/test_day_trade_ledger.py`. **README.md** + **METHODOLOGY.md**: purpose / general use (Phase 1 offline vs future advisory + models). | `sparkles/risk/`, `sparkles/cli.py`, `tests/test_day_trade_ledger.py`, `DEVELOPER.md`, `README.md`, `METHODOLOGY.md`, `plan.md` | **Blocked until owner approves Iteration 6** (features + train) |
+| 2026-04-10 | **Iteration 6 complete:** `features/dataset.py` (entry-only X + session-date masks); `train.run_train` + `build_estimator` (logistic regression from `model:`); `registry` paths; `tracking/experiments.jsonl`; CLI `sparkles train`; dependency **scikit-learn** in core `pyproject.toml`. Tests `tests/test_dataset.py`, `tests/test_train_smoke.py`. | `sparkles/features/`, `sparkles/models/`, `sparkles/tracking/`, `sparkles/config/schema.py`, `sparkles/cli.py`, `pyproject.toml`, `tests/`, `DEVELOPER.md`, `README.md`, `METHODOLOGY.md`, `plan.md` | **Blocked until owner approves Iteration 7** (closure) |
+| 2026-04-11 | **Iteration 7 complete:** `sparkles report` + `sparkles/reporting/summary.py` (cache paths, latest `metrics.json`, `experiments.jsonl` tail, optional `--run`); `train` echoes headline accuracies; README + DEVELOPER smoke path and DEVELOPER pointer; METHODOLOGY closure row. Tests `tests/test_reporting.py`. | `sparkles/reporting/`, `sparkles/cli.py`, `tests/test_reporting.py`, `README.md`, `DEVELOPER.md`, `METHODOLOGY.md`, `plan.md` | **Phase 1 roadmap complete** — owner may mark **Owner approval (Phase 1 complete)** above when satisfied |

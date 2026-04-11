@@ -10,8 +10,11 @@ Quick reference for **where to change what** in Phase 1. Conceptual methodology:
 
 ## Training code (Python you edit often)
 
-- **File:** `sparkles/models/train.py`
-- Use **`DEFAULT_TRAIN_KWARGS`** or **`build_estimator()`** at the top of that file for quick experiments; mirror stable settings under `model:` in the same YAML.
+- **File:** `sparkles/models/train.py` — **`run_train(cfg)`** loads labeled + ingest Parquets, **`build_feature_matrix`** (`sparkles/features/dataset.py`) joins on `entry_time`, splits by **US session date** using **`train_start` / `train_end` / `val_start` / `val_end`** (all four required for training), fits **`model.type`** `logistic_regression` (sklearn), writes **`model_bundle.joblib`** + **`metrics.json`** under **`{artifacts_dir}/{SYMBOL}/{run_id}/`**, and appends a line to **`{artifacts_dir}/experiments.jsonl`**.
+- **Registry:** `sparkles/models/registry.py` — `new_run_id`, `run_artifact_dir`, `save_bundle`, `save_json`.
+- **Features at entry only:** `log_entry_close`, `sigma_ann_at_entry`, `vol_scale_ratio`, `tp_move_effective`, `sl_move`, `intraday_range_pct`, `log1p_volume` (no future path / `bars_forward` in X).
+- **Config:** `model.random_seed`, `model.logistic_c`, `model.max_iter` (see `ModelConfig` in `schema.py`). Use **`DEFAULT_TRAIN_KWARGS`** in `train.py` for scratch overrides not yet in YAML.
+- **Prerequisites:** `sparkles ingest` then `sparkles label` for the same `symbol`, `data_start`, `data_end`, and `label_entry_stride` as in the YAML.
 
 ## Labeling and minimum profit per trade
 
@@ -50,8 +53,10 @@ df2 = add_volatility_from_config(df, cfg)
 
 ## Day-trade cap (3 in 5 US business days)
 
-- **Implementation (Iteration 5):** `sparkles/risk/day_trade_ledger.py` only
-- **Config:** `max_day_trades`, `rolling_business_days`
+- **Implementation:** `sparkles/risk/day_trade_ledger.py` — **`DayTradeLedger`** records one **day-trade event** per same-day round trip (two closes same session date → two records). **`rolling_us_business_days_ending(as_of, periods)`** builds the window: last **`rolling_business_days`** **weekdays** (Mon–Fri) ending at **`as_of`** (weekends roll back to Friday). **NYSE holidays are not skipped** in v1; upgrade to a market calendar if you need exact sessions.
+- **API:** **`count_in_window(as_of)`**, **`can_add_day_trade(session_date)`**, **`record_if_allowed(session_date)`** (returns whether recorded). Use **`record()`** only when you intentionally bypass the cap (e.g. tests).
+- **Config:** `max_day_trades` (default **3**), `rolling_business_days` (default **5**) in experiment YAML.
+- **CLI dry-run:** `sparkles risk day-trades -c configs/experiments/rklb_baseline.yaml` prints counts for **today** (local date). Optional: `--as-of 2026-04-01` and `--history 2026-03-25,2026-03-26,2026-03-26` (comma-separated ISO dates; repeats count as separate events).
 
 ## Data paths and API key
 
@@ -75,16 +80,20 @@ df2 = add_volatility_from_config(df, cfg)
 
 ## CLI entrypoint
 
-After `pip install -e .` (and optional `[ml]` extra for sklearn/xgboost later):
+After `pip install -e .` (baseline training includes **scikit-learn**; optional `[ml]` adds **xgboost**):
 
 ```bash
 sparkles --help
 sparkles ingest --config configs/experiments/rklb_baseline.yaml
 sparkles ingest -c configs/experiments/rklb_baseline.yaml --force --verbose
 sparkles label -c configs/experiments/rklb_baseline.yaml
+sparkles risk day-trades -c configs/experiments/rklb_baseline.yaml
+sparkles train -c configs/experiments/rklb_baseline.yaml
+sparkles report -c configs/experiments/rklb_baseline.yaml
+# Optional: sparkles report -c ... --run 20260411T015314_621888Z
 ```
 
-`train` remains a stub until Iteration 6.
+**Phase 1 smoke:** same `--config`, in order: **`ingest`** (once per range / `--force` refresh) → **`label`** → **`train`** → **`report`**. **`report`** prints whether ingest/labeled Parquet exist, the **latest** training run under **`artifacts/{SYMBOL}/`** (or **`--run <run_id>`**), and the last few **`experiments.jsonl`** rows for that symbol.
 
 ## Config loading in code
 

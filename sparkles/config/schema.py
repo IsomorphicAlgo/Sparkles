@@ -21,6 +21,17 @@ class ModelConfig(BaseModel):
         description="Estimator name, e.g. logistic_regression, xgb_classifier",
     )
     random_seed: int = Field(default=42, ge=0)
+    logistic_c: float = Field(
+        default=1.0,
+        gt=0,
+        description="sklearn LogisticRegression inverse regularization strength C",
+    )
+    max_iter: int = Field(
+        default=2000,
+        ge=100,
+        le=100_000,
+        description="Max iterations for iterative solvers (logistic_regression)",
+    )
 
 
 class PathsConfig(BaseModel):
