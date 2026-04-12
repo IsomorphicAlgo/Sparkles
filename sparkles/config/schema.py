@@ -5,10 +5,13 @@ If you add new YAML keys, update this module and configs/experiments/*.yaml toge
 
 from __future__ import annotations
 
+import re
 from datetime import date
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+_HHMM = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 
 ModelKind = Literal["logistic_regression", "xgboost_classifier"]
 
@@ -210,6 +213,110 @@ class PathsConfig(BaseModel):
     artifacts_dir: str = "artifacts"
 
 
+class LiveIngestConfig(BaseModel):
+    """Phase 2 Plan A: interval / near-live refresh (behavior starts in A3+).
+
+    Validated in Iteration A1; defaults keep Phase 1 batch-only workflows unchanged.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "If true, future refresh/loop commands may run; false = batch ingest only"
+        ),
+    )
+    poll_interval_seconds: float = Field(
+        default=120.0,
+        ge=60.0,
+        le=86_400.0,
+        description=(
+            "Minimum seconds between refresh API calls in the long-running loop (A4+); "
+            "60s floor aligns with TwelveData free-tier credit discipline"
+        ),
+    )
+    refresh_lookback_calendar_days: int = Field(
+        default=2,
+        ge=1,
+        le=31,
+        description=(
+            "Calendar-day span each refresh request covers (caps API payload size)"
+        ),
+    )
+    merge_strategy: Literal[
+        "separate_recent_parquet",
+        "merge_into_main_cache",
+    ] = Field(
+        default="separate_recent_parquet",
+        description=(
+            "separate_recent_parquet: write/update a sidecar *_recent.parquet; "
+            "merge_into_main_cache: append into the main ingest Parquet (A3)"
+        ),
+    )
+    include_extended_hours: bool = Field(
+        default=False,
+        description=(
+            "If true, request extended-hours 1m where the API supports it; "
+            "false = provider default (often regular hours)"
+        ),
+    )
+    session_start_local: str | None = Field(
+        default=None,
+        description=(
+            "Optional window start HH:MM 24h in exchange_timezone; null = no gate"
+        ),
+    )
+    session_end_local: str | None = Field(
+        default=None,
+        description=(
+            "Optional window end HH:MM 24h in exchange_timezone; null = no gate"
+        ),
+    )
+
+    @field_validator("session_start_local", "session_end_local", mode="before")
+    @classmethod
+    def empty_str_to_none(cls, v: object) -> object:
+        if v == "":
+            return None
+        return v
+
+    @field_validator("session_start_local", "session_end_local", mode="after")
+    @classmethod
+    def hhmm_format(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        if not _HHMM.fullmatch(v):
+            raise ValueError(
+                "live_ingest session times must be HH:MM 24h (e.g. 04:00)",
+            )
+        return v
+
+    @model_validator(mode="after")
+    def session_both_or_neither(self) -> LiveIngestConfig:
+        a, b = self.session_start_local, self.session_end_local
+        if (a is None) ^ (b is None):
+            raise ValueError(
+                "live_ingest: set both session_start_local and session_end_local, "
+                "or neither",
+            )
+        return self
+
+    @model_validator(mode="after")
+    def session_end_after_start_same_day(self) -> LiveIngestConfig:
+        a, b = self.session_start_local, self.session_end_local
+        if a is None or b is None:
+            return self
+        ha, ma = (int(x) for x in a.split(":"))
+        hb, mb = (int(x) for x in b.split(":"))
+        if (ha, ma) >= (hb, mb):
+            raise ValueError(
+                "live_ingest: session_end_local must be after session_start_local "
+                "(same calendar day; overnight windows not in v1)",
+            )
+        return self
+
+
 class ExperimentConfig(BaseModel):
     """Single experiment definition loaded from one YAML file."""
 
@@ -300,6 +407,10 @@ class ExperimentConfig(BaseModel):
     features: FeatureConfig = Field(default_factory=lambda: FeatureConfig())
     journal: JournalConfig = Field(default_factory=lambda: JournalConfig())
     paths: PathsConfig = Field(default_factory=lambda: PathsConfig())
+    live_ingest: LiveIngestConfig = Field(
+        default_factory=lambda: LiveIngestConfig(),
+        description="Phase 2 near-live refresh (Plan A); disabled by default",
+    )
 
     @model_validator(mode="after")
     def check_date_ranges(self) -> ExperimentConfig:

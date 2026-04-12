@@ -56,6 +56,8 @@ def test_run_phase1_report_shows_latest_metrics(tmp_path: Path) -> None:
     assert "take_profit" in text
     assert "label_entry_stride=" in text
     assert "ingest_chunk_calendar_days=" in text
+    assert "live_ingest (Phase 2):" in text
+    assert "enabled=False" in text
     assert "model_type (stored): logistic_regression" in text
 
 

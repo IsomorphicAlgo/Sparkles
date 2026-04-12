@@ -5,6 +5,7 @@ from sparkles.config.schema import (
     ExperimentConfig,
     FeatureConfig,
     JournalConfig,
+    LiveIngestConfig,
     TrainConfig,
 )
 
@@ -12,6 +13,7 @@ __all__ = [
     "ExperimentConfig",
     "FeatureConfig",
     "JournalConfig",
+    "LiveIngestConfig",
     "TrainConfig",
     "load_experiment_config",
 ]

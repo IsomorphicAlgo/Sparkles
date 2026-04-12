@@ -48,6 +48,16 @@ def _format_yaml_parameters(cfg: ExperimentConfig) -> list[str]:
         f"ingest_sleep_seconds_between_chunks={cfg.ingest_sleep_seconds_between_chunks}",
     )
 
+    li = cfg.live_ingest
+    out.append(
+        "  live_ingest (Phase 2): "
+        f"enabled={li.enabled}  poll_interval_seconds={li.poll_interval_seconds}  "
+        f"refresh_lookback_calendar_days={li.refresh_lookback_calendar_days}  "
+        f"merge_strategy={li.merge_strategy}  "
+        f"include_extended_hours={li.include_extended_hours}  "
+        f"session={li.session_start_local!r}..{li.session_end_local!r}",
+    )
+
     mc = cfg.model
     out.append(
         "  model: "

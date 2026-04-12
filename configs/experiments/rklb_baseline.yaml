@@ -1,8 +1,11 @@
 # RKLB baseline experiment — Phase 1
-# Symbol and practice ticker
+# Plain-English parameter notes: see "Layman's glossary" at the bottom of this file.
+
+# --- Symbol & time zone (which stock; how we define a "trading day" for labels) ---
 symbol: RKLB
 exchange_timezone: America/New_York
 
+# How old the ingest Parquet can be before a normal ingest may reuse it (see --force).
 cache_ttl_hours: 24
 
 # TwelveData FREE tier (~8 API credits / minute): throttle + fewer chunks.
@@ -12,32 +15,36 @@ ingest_chunk_calendar_days: 10
 ingest_sleep_seconds_between_chunks: 10
 twelvedata_per_minute_credit_wait_seconds: 65
 
-# Historical 1m range for ingest (inclusive-ish per API chunks in Iteration 2)
+# Calendar span of 1m bars we download (ingest) and label.
 data_start: 2022-01-01
 data_end: 2026-03-30
 
-# Optional train/val windows (defaults omitted = set when you start training)
+# Which session dates feed training vs held-out validation (time-based split).
 train_start: 2022-01-01
 train_end: 2026-01-01
 val_start: 2026-01-02
 val_end: 2026-03-30
 
-# Triple barrier (fractions: 0.15 = 15%)
-profit_barrier_base: 0.15
-stop_loss_base: 0.1 #0.05
-# Floor on take-profit *move* after vol scaling (0.02 = 2%)
+# --- Triple barrier (hypothetical long at entry close; scan forward on 1m highs/lows) ---
+# Fractions are decimals: 0.15 = 15%. Barriers widen in high vol, narrow in low vol
+# (scaled by recent price volatility vs a reference — not by share volume).
+profit_barrier_base: 0.2
+stop_loss_base: 0.15  # 0.05
+# Floor: take-profit is never closer than this % above entry, even when vol is calm.
 min_profit_per_trade_pct: 0.1
 
+# Days of past daily returns used to estimate how "bouncy" the stock is (for scaling).
 vol_lookback_trading_days: 20
-vertical_max_trading_days: 10
+# How many US weekday session dates we allow before the "time exit" wins (label: vertical).
+vertical_max_trading_days: 30
+# "Typical" vol level for comparisons: median or mean of vol over the series.
 vol_ref_method: median
 
-# Candidate entry bars: indices 0, N, 2N, ... (1m rows). Filename includes _s{N}.
-# 390 ≈ one entry per regular US RTH session (~6.5h of consecutive minutes); use 1 for
-# every minute (many more label rows, slower `sparkles label`, highly correlated samples).
-label_entry_stride: 390 #390
+# Every Nth 1m bar is a candidate entry (0, N, 2N, …). Larger N = fewer rows, faster label.
+# 390 ≈ one per regular session; 1 = every minute (huge file, slower, correlated rows).
+label_entry_stride: 30  # 390
 
-# Day-trade budget (conservative vs PDT)
+# --- Day-trade cap (for future risk / simulation; does not change how labels are built) ---
 max_day_trades: 3
 rolling_business_days: 5
 
@@ -46,8 +53,9 @@ model:
   # type: xgboost_classifier   # requires: pip install -e ".[ml]"
   random_seed: 42
   # solver: lbfgs
-  tol: 0.0001 # 0.0001
-  class_weight: balanced
+  tol: 0.0001
+  # balanced = weight rare label classes more so the model doesn't only predict "stop_loss".
+  # class_weight: balanced
 
 # train:
 #   min_train_rows: 1
@@ -61,7 +69,7 @@ model:
 # journal:
 #   csv_path: data/journal/my_trades.csv
 
-# Entry-time feature groups (Phase B). All default true if omitted.
+# Which pieces of information at the entry bar the model may use (all entry-time; no future leak).
 features:
   log_entry_close: true
   label_geometry: true
@@ -71,3 +79,76 @@ features:
 paths:
   cache_dir: data/cache
   artifacts_dir: artifacts
+
+# Phase 2 Plan A — near-live refresh (optional; default off). See docs/plan-phase2-01-data-ingest.md
+# live_ingest:
+#   enabled: false
+#   poll_interval_seconds: 120
+#   refresh_lookback_calendar_days: 2
+#   merge_strategy: separate_recent_parquet   # or merge_into_main_cache
+#   include_extended_hours: false
+#   session_start_local: "04:00"
+#   session_end_local: "20:00"
+
+# =============================================================================
+# Layman's glossary (plain English)
+# =============================================================================
+#
+# symbol — Ticker symbol for ingest, labels, and artifacts.
+#
+# exchange_timezone — Wall-clock zone used to assign bars to a "session date" (labels, splits).
+#
+# cache_ttl_hours — If ingest Parquet is newer than this many hours, a normal ingest may skip
+#   re-downloading (use sparkles ingest --force to refresh anyway).
+#
+# ingest_chunk_calendar_days — Download history in chunks of this many calendar days (API limits).
+#
+# ingest_sleep_seconds_between_chunks — Pause between chunks to stay under free-tier API limits.
+#
+# twelvedata_per_minute_credit_wait_seconds — If the API says "minute credits exhausted," wait
+#   this long before retrying (saves credits vs hammering retries).
+#
+# data_start / data_end — First and last calendar dates for the 1m history we cache and label.
+#
+# train_start / train_end — Session dates whose label rows are used to fit the model.
+#
+# val_start / val_end — Session dates held out to score the model (no random shuffle by row).
+#
+# profit_barrier_base — "Typical" take-profit distance above entry as a fraction (0.2 = 20%)
+#   when volatility is near normal. In wild markets the band moves farther out; in calm markets,
+#   closer — unless min_profit_per_trade_pct blocks it from getting too tight.
+#
+# stop_loss_base — Same idea as profit_barrier_base, but below entry (stop side), vol-scaled.
+#
+# min_profit_per_trade_pct — Floor on take-profit: the upper barrier is never closer than this
+#   fraction above entry, even if vol scaling would have made it smaller.
+#
+# vol_lookback_trading_days — Number of trading days of past price history used to estimate
+#   volatility (how much the stock tends to move), which then scales the barriers.
+#
+# vertical_max_trading_days — After this many weekday session dates since the entry day, the
+#   label becomes "vertical" (time exit) if price hasn't hit TP or SL first — like a max hold.
+#
+# vol_ref_method — Whether "normal vol" for scaling is median or mean across the series.
+#
+# label_entry_stride — Only every Nth 1-minute row is treated as a hypothetical entry. Higher N
+#   = fewer examples and faster labeling; N=1 = every minute (most data, heaviest compute).
+#
+# max_day_trades / rolling_business_days — Pattern-day-trade style budget for future tools;
+#   does not change triple-barrier math today.
+#
+# model.type — Which classifier trains on the labels (logistic vs xgboost if [ml] installed).
+#
+# model.random_seed — Reproducible randomness for training.
+#
+# model.tol — How tightly the solver must converge (smaller = stricter, may need more iterations).
+#
+# model.class_weight — null = equal weight per row; balanced = up-weight rare outcomes;
+#   or a dict of {outcome_name: weight} for manual control (see METHODOLOGY.md §12).
+#
+# features.* — Toggle groups of columns built only from the entry bar (and label geometry),
+#   not from future prices after entry.
+#
+# paths.cache_dir — Where ingest + labeled Parquet files live.
+#
+# paths.artifacts_dir — Where each train run writes metrics.json, model bundle, optional preds.

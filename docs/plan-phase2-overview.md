@@ -73,3 +73,4 @@ These apply to **every** agent or contributor working on Phase 2.
 | Date (ISO) | Summary | Plan / iteration | Paths / notes |
 |------------|---------|------------------|---------------|
 | 2026-04-11 | Phase 2 plan set drafted: overview + Plans A–C with per-iteration owner tests. | Setup | `docs/plan-phase2-*.md`, `docs/README.md` |
+| 2026-04-12 | Plan A **A1**: design block in `plan-phase2-01-data-ingest.md`, **`live_ingest`** validated config (default off). | A1 | `sparkles/config/schema.py`, `sparkles/reporting/summary.py`, `configs/experiments/rklb_baseline.yaml` |

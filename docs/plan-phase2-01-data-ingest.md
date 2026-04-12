@@ -8,6 +8,57 @@
 
 ---
 
+## Design specification (Iteration A1 — locked)
+
+This section records **what “live” means** in Sparkles before implementation (A3+). It is the **paper design** for Plan A.
+
+### Mode: interval HTTP refresh (not websocket in v1)
+
+- **v1:** A **polling** loop (A4) calls an **incremental fetch** (A3) on a **timer**: `poll_interval_seconds` (minimum **60s** in schema; default **120s**) between **completed** refresh attempts, not between every sub-chunk inside one refresh (chunk sleeps reuse existing ingest throttles).
+- **Future:** WebSockets or push feeds are **out of scope** until explicitly approved; the same YAML block can later gain a `transport: http | …` field if needed.
+
+### Data layout: separate recent file vs main cache
+
+- **Default (`merge_strategy: separate_recent_parquet`):** Keep the existing **batch** Parquet `{SYMBOL}_1min_{data_start}_{data_end}.parquet` as the **historical** truth from `sparkles ingest`. Writes **recent** bars to a **sidecar** file (naming finalized in A3), e.g. `{SYMBOL}_1min_recent.parquet`, **deduped by bar timestamp**, so refreshes never silently **overwrite** years of backfill.
+- **Optional (`merge_into_main_cache`):** Append new bars into the main cache file (more foot-gun risk; only for advanced users who accept longer Parquet rewrites).
+
+### Lookback per refresh
+
+- **`refresh_lookback_calendar_days`** (default **2**, max **31**): bounds each refresh request to **recent calendar days** of 1m data, limiting payload size and API credits per tick.
+
+### Session window and extended hours
+
+- **`session_start_local` / `session_end_local`:** Optional **HH:MM** wall-clock in **`exchange_timezone`**. **Both set or both omitted.** If omitted, the loop does **not** gate on clock (implementation still obeys API in A4). **Overnight windows** (e.g. 22:00–04:00) are **not** supported in v1—use full-day (omit both) or a same-day span (e.g. **04:00–20:00** for a long US equity window).
+- **`include_extended_hours`:** When **true**, implementation (A3) will request extended-hours 1m where TwelveData supports it for the symbol; when **false**, rely on the provider default (often **regular hours only**). Exact API parameters are fixed in A3.
+
+### Single symbol
+
+- Phase 2 refresh uses the **same** experiment YAML as Phase 1: **one `symbol` per config file**. Multi-ticker orchestration is out of scope.
+
+### Relationship to `cache_ttl_hours` (batch ingest)
+
+- **`cache_ttl_hours`** applies only to **historical** `sparkles ingest` skipping re-download of the **full** `data_start`–`data_end` range.
+- **Live refresh** does **not** use TTL to block new bars: the hot path is the **sidecar** / incremental merge. Re-running full `sparkles ingest` still respects TTL for the big file unless **`--force`**.
+
+### Failure modes (behavior in A3+)
+
+| Situation | Intended behavior |
+|-----------|-------------------|
+| Empty or error response from API | Log warning / error; **do not** truncate existing Parquet; optional retry via `retry.py`. |
+| Partial day / gaps | Merge what returned; **dedupe** by timestamp. |
+| Clock / timezone | Session window evaluated in **`exchange_timezone`** (same as labels). |
+| Stale data | Document **`max_staleness_minutes`** in a later iteration if needed; not required for A1. |
+
+### Credit posture (defaults)
+
+- Default **`poll_interval_seconds` = 120** and **minimum 60** keep headroom above typical **free-tier** per-minute limits (see **[METHODOLOGY.md](../METHODOLOGY.md)** §2.4). **Do not** set very low intervals without a paid tier.
+
+### Config surface (Iteration A1)
+
+- Implemented as validated **`live_ingest:`** in experiment YAML (`LiveIngestConfig` in **`sparkles/config/schema.py`**). **`enabled` defaults to `false`** so Phase 1 workflows are unchanged until you opt in.
+
+---
+
 ## Mandatory rules
 
 Follow **[plan-phase2-overview.md](plan-phase2-overview.md)** — Mandatory rules (Phase 2 — all plans).
@@ -100,3 +151,4 @@ Follow **[plan-phase2-overview.md](plan-phase2-overview.md)** — Mandatory rule
 | Date (ISO) | Summary | Iteration | Paths / notes |
 |------------|---------|-----------|---------------|
 | 2026-04-11 | Plan A drafted: A1–A5 with owner test steps. | — | `docs/plan-phase2-01-data-ingest.md` |
+| 2026-04-12 | **A1:** Design section (this file), **`LiveIngestConfig`** + **`live_ingest`** on **`ExperimentConfig`**, report line, commented YAML example, tests. | A1 | `sparkles/config/schema.py`, `sparkles/reporting/summary.py`, `configs/experiments/rklb_baseline.yaml`, `tests/test_live_ingest_config.py` |
