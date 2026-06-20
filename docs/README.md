@@ -7,5 +7,6 @@
 | **[plan-phase2-01-data-ingest.md](plan-phase2-01-data-ingest.md)** | Plan A: refreshed 1m data, session windows, API credit discipline. |
 | **[plan-phase2-02-inference-runtime.md](plan-phase2-02-inference-runtime.md)** | Plan B: bundle load, per-bar scoring, replay, tie-in to refresh. |
 | **[plan-phase2-03-state-ui-journal.md](plan-phase2-03-state-ui-journal.md)** | Plan C: position file, exit helpers, messaging, optional GUI, journal. |
+| **[plan-robinhood-agent-growth.md](plan-robinhood-agent-growth.md)** | Phase 3: Robinhood Agentic MCP bridge, $500→$2k growth stages, guarded execution. |
 
 Repo landing, quick start, and Phase 1 methodology: **[README.md](../README.md)**, **[METHODOLOGY.md](../METHODOLOGY.md)**, **[DEVELOPER.md](../DEVELOPER.md)**, **[plan.md](../plan.md)**.

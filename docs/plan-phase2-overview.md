@@ -61,6 +61,7 @@ These apply to **every** agent or contributor working on Phase 2.
 | **[plan-phase2-01-data-ingest.md](plan-phase2-01-data-ingest.md)** | Data refresh / session windows / credits. |
 | **[plan-phase2-02-inference-runtime.md](plan-phase2-02-inference-runtime.md)** | Scoring loop and bundle load. |
 | **[plan-phase2-03-state-ui-journal.md](plan-phase2-03-state-ui-journal.md)** | Position, messaging, logging, journal. |
+| **[plan-robinhood-agent-growth.md](plan-robinhood-agent-growth.md)** | **Phase 3:** Robinhood Agentic MCP execution bridge, $500→$2k growth stages (owner-approved scope change). |
 | **[METHODOLOGY.md](../METHODOLOGY.md)** | Product intent and API philosophy. |
 | **[DEVELOPER.md](../DEVELOPER.md)** | Code map (update when new CLIs/modules land). |
 
@@ -74,3 +75,4 @@ These apply to **every** agent or contributor working on Phase 2.
 |------------|---------|------------------|---------------|
 | 2026-04-11 | Phase 2 plan set drafted: overview + Plans A–C with per-iteration owner tests. | Setup | `docs/plan-phase2-*.md`, `docs/README.md` |
 | 2026-04-12 | Plan A **A1**: design block in `plan-phase2-01-data-ingest.md`, **`live_ingest`** validated config (default off). | A1 | `sparkles/config/schema.py`, `sparkles/reporting/summary.py`, `configs/experiments/rklb_baseline.yaml` |
+| 2026-06-20 | **Phase 3 plan drafted** (Robinhood Agentic MCP + account growth stages). Phase 2 Plans A–C remain prerequisite; execution scope moves to Phase 3 with owner gates. | Setup | `docs/plan-robinhood-agent-growth.md`, `docs/plan-phase2-overview.md`, `plan.md` |
