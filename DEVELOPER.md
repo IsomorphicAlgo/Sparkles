@@ -52,7 +52,7 @@ Quick reference for **where to change what** in Phase 1. Conceptual methodology:
 - **Batch trials:** `python scripts/run_trials.py` (default base: **`rklb_baseline.yaml`**, all presets). Flags: **`--dry-run`**, **`--preset path/to/overlay.yaml`**, **`--no-export`**, **`-o artifacts/training_log.csv`**. After real trains, refreshes the wide CSV for spreadsheet comparison.
 - **Compare results:** **`sparkles experiments export -c …`** or open **`artifacts/training_log.csv`**; sort by **`val_f1_macro`** (preferred for imbalanced labels) or **`val_accuracy`**.
 - **Notebook console:** **`notebooks/sparkles_train_console.ipynb`** — edit parameters in cells, dry-run, train, trials table + charts (`pip install -e ".[notebook]"`).
-- **Feature expansion (planned):** Phases **G1–G3** (returns, vol, session/volume, microstructure) and **H** (multi-symbol) in **[docs/ML_EXPANSION.md](docs/ML_EXPANSION.md)** — **G1 complete** (`returns_multi_horizon`, `realized_vol_multi`, `range_vol_multi`); preset **`configs/experiments/presets/g1_features_v1.yaml`**. Implement **G2 on RKLB before** adding tickers.
+- **Feature expansion (planned):** Phases **G1–G3** (returns, vol, session/volume, microstructure) and **H** (multi-symbol) in **[docs/ML_EXPANSION.md](docs/ML_EXPANSION.md)** — **G1** complete (`returns_multi_horizon`, `realized_vol_multi`, `range_vol_multi`; preset **`g1_features_v1.yaml`**); **G2** complete (`session_time`, `volume_context`, `vwap_distance`; preset **`rklb_daytrade_g1_g2_v1.yaml`**). Next: **G3** on RKLB before adding tickers.
 
 ## Labeling and minimum profit per trade
 

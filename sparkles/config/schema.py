@@ -175,6 +175,23 @@ class FeatureConfig(BaseModel):
         default=True,
         description="Include atr_norm_{window}m when range_vol_multi is on",
     )
+    session_time: bool = Field(
+        default=False,
+        description="minutes_since_open, minutes_to_close, sin_time, cos_time",
+    )
+    volume_context: bool = Field(
+        default=False,
+        description="rel_volume, log_rel_volume vs trailing median volume",
+    )
+    volume_median_window_bars: int = Field(
+        default=60,
+        ge=2,
+        description="Trailing window for volume_context median",
+    )
+    vwap_distance: bool = Field(
+        default=False,
+        description="(close - session VWAP) / session VWAP through entry bar",
+    )
 
     @field_validator("returns_horizons_bars")
     @classmethod
@@ -207,12 +224,16 @@ class FeatureConfig(BaseModel):
                 self.returns_multi_horizon,
                 self.realized_vol_multi,
                 self.range_vol_multi,
+                self.session_time,
+                self.volume_context,
+                self.vwap_distance,
             ),
         ):
             raise ValueError(
                 "features: enable at least one feature group "
                 "(log_entry_close, label_geometry, intraday_range_pct, log1p_volume, "
-                "returns_multi_horizon, realized_vol_multi, range_vol_multi)",
+                "returns_multi_horizon, realized_vol_multi, range_vol_multi, "
+                "session_time, volume_context, vwap_distance)",
             )
         return self
 

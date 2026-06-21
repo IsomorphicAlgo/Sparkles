@@ -24,7 +24,7 @@ todos:
     content: "Phase G1: Multi-horizon returns + multi-scale realized vol/range (entry-only)"
     status: complete
   - id: feature-expansion-g2
-    content: "Phase G2: Session/time + volume context (rel volume, VWAP distance)"
+    content: "Phase G2: Session/time + volume context (rel volume, VWAP distance) ✅"
     status: pending
   - id: feature-expansion-g3
     content: "Phase G3: Bar microstructure + optional market context (SPY/VIX ingest)"
@@ -131,15 +131,19 @@ This file is the **living roadmap** for improving **models**, **hyperparameters*
 
 **Done when:** ✅ Flags validate; preset dry-runs; tests in **`tests/test_intraday_features.py`**.
 
-### G2 — Session time and volume context
+### G2 — Session time and volume context ✅
 
-| Proposed YAML flag | Columns (draft) | Definition | Notes |
-|--------------------|-----------------|------------|-------|
-| **`session_time`** | `minutes_since_open`, `minutes_to_close`, `sin_time`, `cos_time` | Exchange-TZ session progress; cyclical time | Intraday seasonality (open / midday / close) |
-| **`volume_context`** | `rel_volume`, `log_rel_volume` | Entry volume / rolling median volume (trailing, entry-only) | Volume *surprise* vs level-only **`log1p_volume`** |
-| **`vwap_distance`** | `vwap_session_dist_pct` | `(close − session_VWAP) / session_VWAP` through entry bar | Institutional benchmark; VWAP cumulated from session open only |
+| YAML flag | Columns | Definition | Notes |
+|-----------|---------|------------|-------|
+| **`session_time`** | `minutes_since_open`, `minutes_to_close`, `sin_time`, `cos_time` | Exchange-TZ session progress; cyclical time | Implemented 2026-06-21 |
+| **`volume_context`** | `rel_volume`, `log_rel_volume` | Entry volume / rolling median volume (trailing, entry-only) | **`volume_median_window_bars`** (default 60) |
+| **`vwap_distance`** | `vwap_session_dist_pct` | `(close − session_VWAP) / session_VWAP` through entry bar | Session VWAP from typical price × volume |
 
-**Done when:** Session boundaries match **`exchange_timezone`** and existing session-date split logic; tests cover pre-market / regular hours if **`include_extended_hours`** is ever enabled.
+**Preset:** **`configs/experiments/presets/rklb_daytrade_g1_g2_v1.yaml`** (G1 + G2 on day-trade v2 base).
+
+**Warm-up:** G2 adds **`volume_median_window_bars`** when **`volume_context`** is on; combined with G1 via **`feature_warmup_bars()`** in **`build_feature_matrix`**.
+
+**Done when:** ✅ Session boundaries use **`exchange_timezone`**; tests in **`tests/test_session_features.py`**.
 
 ### G3 — Bar microstructure and optional market regime
 
@@ -221,7 +225,7 @@ Lower priority than G1–G2 unless validation overfitting becomes the bottleneck
 
 **Completed:** A → B → C → D → E → F
 
-**Next (owner-approved slices):** **G1 → G2 → G3** (can ship incrementally) → **H** (multi-symbol, if desired) → **I** (AFML extras as needed).
+**Next (owner-approved slices):** **G3** → **H** (multi-symbol, if desired) → **I** (AFML extras as needed). **G1** and **G2** complete.
 
 B before C gave better ROI than jumping to XGBoost; **G before H** follows the same logic for features vs universe size.
 
@@ -270,3 +274,4 @@ For reviewers — what ships today when all **`features.*`** flags are **true** 
 | 2026-06-20 | **Phase D complete (owner approved):** **`preprocess.scaler`** YAML (`none` \| `standard` \| `robust`); train-only sklearn **Pipeline**; bundle **`preprocess_scaler`** + **`predict_from_bundle`**; tests **`test_preprocess.py`**. | `sparkles/config/schema.py`, `sparkles/models/preprocess.py`, `sparkles/models/train.py`, `sparkles/reporting/summary.py`, `tests/`, `DEVELOPER.md`, `docs/ML_EXPANSION.md`, `plan.md` | **Phase D** |
 | 2026-06-20 | **Feature review + roadmap Phases G–I:** entry-time expansion backlog (returns, multi-scale vol, session/volume, microstructure, optional market context); multi-symbol Phase H; AFML Phase I; **features-before-symbols** guidance. Doc only — no code. | `docs/ML_EXPANSION.md`, `plan.md` | **Phase G planning** |
 | 2026-06-20 | **Phase G1 complete (owner approved):** `returns_multi_horizon`, `realized_vol_multi`, `range_vol_multi` YAML + builders; full-OHLCV trailing windows; warm-up row drop; preset **`g1_features_v1.yaml`**; tests **`test_intraday_features.py`**. | `sparkles/config/schema.py`, `sparkles/features/intraday.py`, `sparkles/features/builders.py`, `sparkles/features/dataset.py`, `sparkles/features/registry.py`, `configs/experiments/presets/g1_features_v1.yaml`, `tests/`, `DEVELOPER.md`, `docs/ML_EXPANSION.md`, `plan.md` | **Phase G1** |
+| 2026-06-21 | **Phase G2 complete (owner approved):** `session_time`, `volume_context`, `vwap_distance` YAML + builders in **`session.py`**; preset **`rklb_daytrade_g1_g2_v1.yaml`**; tests **`test_session_features.py`**. | `sparkles/features/session.py`, `sparkles/config/schema.py`, `sparkles/features/registry.py`, `sparkles/features/dataset.py`, `configs/experiments/presets/rklb_daytrade_g1_g2_v1.yaml`, `tests/`, `DEVELOPER.md`, `docs/ML_EXPANSION.md`, `plan.md` | **Phase G2** |

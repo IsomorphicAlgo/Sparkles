@@ -14,11 +14,16 @@ import pandas as pd
 
 from sparkles.config.schema import ExperimentConfig, FeatureConfig
 from sparkles.features.builders import EntryFeatureContext
-from sparkles.features.intraday import max_warmup_bars
+from sparkles.features.intraday import max_warmup_bars as g1_warmup_bars
 from sparkles.features.registry import assemble_feature_columns
+from sparkles.features.session import g2_warmup_bars
 from sparkles.features.volatility import ensure_exchange_tz_index
 
 logger = logging.getLogger(__name__)
+
+
+def feature_warmup_bars(fc: FeatureConfig) -> int:
+    return max(g1_warmup_bars(fc), g2_warmup_bars(fc))
 
 
 def entry_session_dates(
@@ -49,8 +54,10 @@ def _required_label_columns(fc: FeatureConfig) -> set[str]:
 
 def _required_ohlcv_columns(fc: FeatureConfig) -> set[str]:
     need: set[str] = {"close"}
-    if fc.intraday_range_pct or fc.range_vol_multi:
+    if fc.intraday_range_pct or fc.range_vol_multi or fc.vwap_distance:
         need.update({"high", "low"})
+    if fc.log1p_volume or fc.volume_context or fc.vwap_distance:
+        need.add("volume")
     if fc.returns_multi_horizon or fc.realized_vol_multi:
         need.add("close")
     return need
@@ -58,7 +65,12 @@ def _required_ohlcv_columns(fc: FeatureConfig) -> set[str]:
 
 def _needs_full_ohlcv_history(fc: FeatureConfig) -> bool:
     return bool(
-        fc.returns_multi_horizon or fc.realized_vol_multi or fc.range_vol_multi,
+        fc.returns_multi_horizon
+        or fc.realized_vol_multi
+        or fc.range_vol_multi
+        or fc.session_time
+        or fc.volume_context
+        or fc.vwap_distance
     )
 
 
@@ -105,7 +117,7 @@ def build_feature_matrix(
         aligned = aligned.loc[ok]
         positions = positions.loc[ok]
 
-    warmup = max_warmup_bars(fc) if _needs_full_ohlcv_history(fc) else 0
+    warmup = feature_warmup_bars(fc) if _needs_full_ohlcv_history(fc) else 0
     if warmup > 0:
         warm_ok = positions >= warmup
         dropped_warmup = int((~warm_ok).sum())
@@ -126,6 +138,7 @@ def build_feature_matrix(
         full_ohlcv=ohlcv,
         entry_positions=positions,
         feature_config=fc,
+        exchange_timezone=cfg.exchange_timezone,
     )
     X = assemble_feature_columns(ctx, fc)
     y = labels["barrier_outcome"].astype(str).copy()

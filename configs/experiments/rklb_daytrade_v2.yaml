@@ -60,9 +60,13 @@ features:
   realized_vol_multi: false               # G1: trailing std of 1m log returns (rv_{N}m)
   realized_vol_windows_bars: [30, 120]      # G1: RV window lengths in 1m bars
   realized_vol_include_ratio: true        # G1: add short/long RV ratio column
-  range_vol_multi: false                  # G1: Parkinson range vol + optional ATR norm
+  range_vol_multi: true                  # G1: Parkinson range vol + optional ATR norm
   range_vol_window_bars: 30               # G1: rolling window for range/ATR features
   range_vol_include_atr_norm: true        # G1: include atr_norm_{window}m when range on
+  session_time: true                     # G2: minutes since open/close, sin/cos time
+  volume_context: true                   # G2: rel_volume vs trailing median volume
+  volume_median_window_bars: 60           # G2: trailing window for volume_context
+  vwap_distance: true                    # G2: distance from session VWAP at entry
 
 paths:
   cache_dir: data/cache                   # Ingest + labeled Parquet directory

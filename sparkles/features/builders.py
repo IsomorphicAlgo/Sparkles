@@ -24,6 +24,7 @@ class EntryFeatureContext:
     full_ohlcv: pd.DataFrame
     entry_positions: pd.Series
     feature_config: FeatureConfig
+    exchange_timezone: str
 
 
 def build_log_entry_close(ctx: EntryFeatureContext) -> pd.DataFrame:

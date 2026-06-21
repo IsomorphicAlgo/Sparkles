@@ -19,8 +19,13 @@ from sparkles.features.intraday import (
     build_realized_vol_multi,
     build_returns_multi_horizon,
 )
+from sparkles.features.session import (
+    build_session_time,
+    build_volume_context,
+    build_vwap_distance,
+)
 
-# Stable column order for default all-on configs (matches pre–Phase B + G1 append).
+# Stable column order for default all-on configs (matches pre–Phase B + G1/G2 append).
 _FEATURE_ORDER: Sequence[tuple[str, Callable[[EntryFeatureContext], pd.DataFrame]]] = (
     ("log_entry_close", build_log_entry_close),
     ("label_geometry", build_label_geometry),
@@ -29,6 +34,9 @@ _FEATURE_ORDER: Sequence[tuple[str, Callable[[EntryFeatureContext], pd.DataFrame
     ("returns_multi_horizon", build_returns_multi_horizon),
     ("realized_vol_multi", build_realized_vol_multi),
     ("range_vol_multi", build_range_vol_multi),
+    ("session_time", build_session_time),
+    ("volume_context", build_volume_context),
+    ("vwap_distance", build_vwap_distance),
 )
 
 

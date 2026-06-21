@@ -17,4 +17,7 @@ def test_feature_config_rejects_all_disabled() -> None:
             returns_multi_horizon=False,
             realized_vol_multi=False,
             range_vol_multi=False,
+            session_time=False,
+            volume_context=False,
+            vwap_distance=False,
         )
