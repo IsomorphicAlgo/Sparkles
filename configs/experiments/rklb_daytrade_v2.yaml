@@ -36,6 +36,8 @@ train:
   experiment_name: rklb_daytrade_v2       # Name in experiments.jsonl / comparison CSV
   notes: "Day-trade v2 — 3% TP / 5% SL / 5% min profit / 1-day vertical / stride 15"
   export_predictions: val                 # val | all | none → predictions.parquet
+  entry_threshold_take_profit: 0.35     # optional backtest-only entry rule (I2); train unchanged
+  sample_weight_method: uniqueness       # optional I4 — down-weight overlapping labels at fit, works with logistic and XGBoost
 
 model:
   type: xgboost_classifier                # logistic_regression | xgboost_classifier ([ml] extra)
@@ -55,9 +57,9 @@ features:
   label_geometry: true                    # sigma, vol ratio, tp/sl distances at entry
   intraday_range_pct: true                # (high − low) / close on entry bar
   log1p_volume: true                      # log(1 + volume) on entry bar
-  returns_multi_horizon: false            # G1: trailing log returns (ret_{N}m columns)
+  returns_multi_horizon: true            # G1: trailing log returns (ret_{N}m columns)
   returns_horizons_bars: [5, 15, 30, 60]  # G1: bar lookbacks when returns_multi_horizon true
-  realized_vol_multi: false               # G1: trailing std of 1m log returns (rv_{N}m)
+  realized_vol_multi: true               # G1: trailing std of 1m log returns (rv_{N}m)
   realized_vol_windows_bars: [30, 120]      # G1: RV window lengths in 1m bars
   realized_vol_include_ratio: true        # G1: add short/long RV ratio column
   range_vol_multi: true                  # G1: Parkinson range vol + optional ATR norm
@@ -67,7 +69,22 @@ features:
   volume_context: true                   # G2: rel_volume vs trailing median volume
   volume_median_window_bars: 60           # G2: trailing window for volume_context
   vwap_distance: true                    # G2: distance from session VWAP at entry
+  bar_microstructure: true                # G3: close_loc_value, bar_body_pct on entry bar
+  market_context: true                   # G3: spy_ret_15m, vix_chg_1d (needs context_ingest)
+  market_spy_return_bars: 15              # G3: SPY trailing return window (1m bars)
+
+# Context symbols cached alongside RKLB (same data_start/data_end). Download via sparkles ingest.
+context_ingest:
+  symbols:
+    - symbol: SPY
+      interval: 1min                      # sparkles ingest -c … -s SPY -i 1min
+    - symbol: VIXY
+      interval: 1day                      # sparkles ingest -c … -s VIXY -i 1day
+      twelvedata_exchange: CBOE            # VIX ST futures ETF; spot VIX/^VIX not on TwelveData
 
 paths:
   cache_dir: data/cache                   # Ingest + labeled Parquet directory
   artifacts_dir: artifacts                # Train runs, metrics.json, model bundles
+
+# Usage:
+#   sparkles label -c configs/experiments/rklb_daytrade_v2.yaml -v

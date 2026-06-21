@@ -8,6 +8,7 @@ Trailing-window groups (Phase G1) read the full 1m series up to each entry bar.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -15,25 +16,18 @@ import pandas as pd
 from sparkles.config.schema import ExperimentConfig, FeatureConfig
 from sparkles.features.builders import EntryFeatureContext
 from sparkles.features.intraday import max_warmup_bars as g1_warmup_bars
+from sparkles.features.market_context import g3_warmup_bars
+from sparkles.features.market_data import load_market_context_frames
 from sparkles.features.registry import assemble_feature_columns
 from sparkles.features.session import g2_warmup_bars
+from sparkles.features.time import entry_session_dates
 from sparkles.features.volatility import ensure_exchange_tz_index
 
 logger = logging.getLogger(__name__)
 
 
 def feature_warmup_bars(fc: FeatureConfig) -> int:
-    return max(g1_warmup_bars(fc), g2_warmup_bars(fc))
-
-
-def entry_session_dates(
-    index: pd.DatetimeIndex | pd.Index,
-    exchange_timezone: str,
-) -> pd.Series:
-    """US session calendar date per bar (normalized midnight in exchange TZ)."""
-    ix = ensure_exchange_tz_index(pd.DatetimeIndex(index), exchange_timezone)
-    norm = pd.DatetimeIndex(ix).normalize()
-    return pd.Series(norm.date, index=index, dtype=object)
+    return max(g1_warmup_bars(fc), g2_warmup_bars(fc), g3_warmup_bars(fc))
 
 
 def _required_label_columns(fc: FeatureConfig) -> set[str]:
@@ -56,6 +50,8 @@ def _required_ohlcv_columns(fc: FeatureConfig) -> set[str]:
     need: set[str] = {"close"}
     if fc.intraday_range_pct or fc.range_vol_multi or fc.vwap_distance:
         need.update({"high", "low"})
+    if fc.bar_microstructure:
+        need.update({"open", "high", "low"})
     if fc.log1p_volume or fc.volume_context or fc.vwap_distance:
         need.add("volume")
     if fc.returns_multi_horizon or fc.realized_vol_multi:
@@ -71,6 +67,7 @@ def _needs_full_ohlcv_history(fc: FeatureConfig) -> bool:
         or fc.session_time
         or fc.volume_context
         or fc.vwap_distance
+        or fc.market_context
     )
 
 
@@ -78,6 +75,8 @@ def build_feature_matrix(
     labels: pd.DataFrame,
     ohlcv: pd.DataFrame,
     cfg: ExperimentConfig,
+    *,
+    base_dir: Path | None = None,
 ) -> tuple[pd.DataFrame, pd.Series]:
     """Return ``(X, y)`` aligned to labeled rows with matching OHLCV index.
 
@@ -131,6 +130,33 @@ def build_feature_matrix(
         aligned = aligned.loc[warm_ok]
         positions = positions.loc[warm_ok]
 
+    market_spy_1m: pd.DataFrame | None = None
+    market_vix_1d: pd.DataFrame | None = None
+    if fc.market_context:
+        market_spy_1m, market_vix_1d = load_market_context_frames(
+            cfg,
+            base_dir=base_dir,
+        )
+        spy_ix = ensure_exchange_tz_index(market_spy_1m.index, cfg.exchange_timezone)
+        entry_ix = ensure_exchange_tz_index(labels.index, cfg.exchange_timezone)
+        spy_pos = pd.Series(
+            spy_ix.get_indexer(entry_ix),
+            index=labels.index,
+            dtype=np.int64,
+        )
+        spy_warm = fc.market_spy_return_bars
+        spy_ok = spy_pos >= spy_warm
+        dropped_spy = int((~spy_ok).sum())
+        if dropped_spy:
+            logger.info(
+                "Dropping %s label rows before SPY trailing-window warm-up (%s bars)",
+                dropped_spy,
+                spy_warm,
+            )
+        labels = labels.loc[spy_ok]
+        aligned = aligned.loc[spy_ok]
+        positions = positions.loc[spy_ok]
+
     ctx = EntryFeatureContext(
         labels=labels,
         aligned_ohlcv=aligned,
@@ -139,6 +165,8 @@ def build_feature_matrix(
         entry_positions=positions,
         feature_config=fc,
         exchange_timezone=cfg.exchange_timezone,
+        market_spy_1m=market_spy_1m,
+        market_vix_1d=market_vix_1d,
     )
     X = assemble_feature_columns(ctx, fc)
     y = labels["barrier_outcome"].astype(str).copy()

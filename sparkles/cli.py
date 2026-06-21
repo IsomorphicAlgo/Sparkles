@@ -13,6 +13,21 @@ from pathlib import Path
 import pandas as pd
 import typer
 
+from sparkles.backtest.meta_label import (
+    compare_entry_policies,
+    format_compare_report,
+    resolve_primary_run_dir,
+    train_meta_label,
+)
+from sparkles.backtest.threshold_sweep import (
+    format_sweep_report,
+    run_threshold_sweep,
+)
+from sparkles.backtest.val_backtest import (
+    format_backtest_report,
+    resolve_run_dir,
+    run_val_backtest,
+)
 from sparkles.config import load_experiment_config
 from sparkles.data.ingest import run_ingest
 from sparkles.journal.compare import run_journal_compare
@@ -48,6 +63,12 @@ experiments_app = typer.Typer(
 )
 app.add_typer(experiments_app, name="experiments")
 
+meta_label_app = typer.Typer(
+    help="Phase I3 meta-label spike (secondary filter on primary take_profit signals).",
+    no_args_is_help=True,
+)
+app.add_typer(meta_label_app, name="meta-label")
+
 _DEFAULT_CONFIG = Path("configs/experiments/rklb_baseline.yaml")
 
 
@@ -71,6 +92,19 @@ def ingest(
         dir_okay=False,
         help="Experiment YAML (default: configs/experiments/rklb_baseline.yaml)",
     ),
+    symbol: str | None = typer.Option(
+        None,
+        "--symbol",
+        "-s",
+        help="Ticker to download (default: experiment symbol, e.g. RKLB)",
+    ),
+    interval: str | None = typer.Option(
+        None,
+        "--interval",
+        "-i",
+        help="TwelveData interval: 1min or 1day (default: 1min for main symbol; "
+        "inferred from context_ingest for others)",
+    ),
     force: bool = typer.Option(
         False,
         "--force",
@@ -84,7 +118,14 @@ def ingest(
         help="Log each chunk to stderr",
     ),
 ) -> None:
-    """Download and cache 1m bars (historical batch; TwelveData)."""
+    """Download and cache OHLCV for one symbol/interval (historical batch; TwelveData).
+
+    Uses data_start/data_end from the experiment YAML. Each symbol is cached
+    independently — download SPY/VIX without re-fetching RKLB:
+
+      sparkles ingest -c configs/experiments/rklb_daytrade_v2.yaml -s SPY -i 1min
+      sparkles ingest -c configs/experiments/rklb_daytrade_v2.yaml -s VIX -i 1day
+    """
     logging.basicConfig(
         level=logging.DEBUG if verbose else logging.INFO,
         format="%(levelname)s %(name)s: %(message)s",
@@ -92,7 +133,7 @@ def ingest(
     cfg_path = _resolve_config(config)
     cfg = load_experiment_config(cfg_path)
     try:
-        path = run_ingest(cfg, force_refresh=force)
+        path = run_ingest(cfg, symbol=symbol, interval=interval, force_refresh=force)
     except ValueError as e:
         typer.secho(str(e), err=True, fg=typer.colors.RED)
         raise typer.Exit(code=1) from e
@@ -396,6 +437,208 @@ def report(
     cfg_path = _resolve_config(config)
     cfg = load_experiment_config(cfg_path)
     typer.echo(run_phase1_report(cfg, run_id=run_id))
+
+
+@app.command()
+def backtest(
+    config: Path | None = typer.Option(
+        None,
+        "--config",
+        "-c",
+        exists=True,
+        dir_okay=False,
+        help="Experiment YAML (barriers, paths, day-trade cap)",
+    ),
+    run_id: str | None = typer.Option(
+        None,
+        "--run",
+        help="Run id under artifacts/SYMBOL/ (default: latest with predictions)",
+    ),
+    split: str = typer.Option(
+        "val",
+        "--split",
+        help="Prediction split to backtest: val, train, or all",
+    ),
+    threshold: float | None = typer.Option(
+        None,
+        "--threshold",
+        "-t",
+        min=0.0,
+        max=1.0,
+        help="Enter when proba_take_profit >= threshold (overrides YAML default)",
+    ),
+    sweep: bool = typer.Option(
+        False,
+        "--sweep",
+        help="Sweep thresholds; writes backtest_threshold_sweep.csv/json",
+    ),
+    sweep_step: float = typer.Option(
+        0.05,
+        "--sweep-step",
+        min=0.01,
+        max=0.5,
+        help="Threshold grid step when --sweep (default 0.05)",
+    ),
+    sweep_min_signals: int = typer.Option(
+        5,
+        "--sweep-min-signals",
+        min=1,
+        help="Minimum signals for suggested threshold in sweep output",
+    ),
+    no_day_trade_cap: bool = typer.Option(
+        False,
+        "--no-day-trade-cap",
+        help="Disable rolling day-trade cap when simulating entries",
+    ),
+) -> None:
+    """Simulate policy PnL from predictions.parquet + labeled cache (Phase I1/I2)."""
+    cfg_path = _resolve_config(config)
+    cfg = load_experiment_config(cfg_path)
+    root = Path.cwd()
+    try:
+        run_dir = resolve_run_dir(cfg, run_id, base_dir=root)
+        if sweep:
+            sweep_df, payload = run_threshold_sweep(
+                cfg,
+                run_dir,
+                split=split,
+                sweep_step=sweep_step,
+                enforce_day_trade_cap=not no_day_trade_cap,
+                min_signals_for_suggestion=sweep_min_signals,
+                base_dir=root,
+            )
+        else:
+            summary, _ = run_val_backtest(
+                cfg,
+                run_dir,
+                split=split,
+                tp_threshold=threshold,
+                enforce_day_trade_cap=not no_day_trade_cap,
+                base_dir=root,
+            )
+    except (FileNotFoundError, ValueError) as e:
+        typer.secho(str(e), err=True, fg=typer.colors.RED)
+        raise typer.Exit(code=1) from e
+
+    if sweep:
+        typer.echo(str((run_dir / "backtest_threshold_sweep.csv").resolve()))
+        typer.echo(format_sweep_report(sweep_df, payload))
+        return
+
+    typer.echo(str((run_dir / "backtest_summary.json").resolve()))
+    typer.echo(format_backtest_report(summary))
+
+
+@meta_label_app.command("train")
+def meta_label_train_cmd(
+    config: Path | None = typer.Option(
+        None,
+        "--config",
+        "-c",
+        exists=True,
+        dir_okay=False,
+        help="Experiment YAML (must match primary run features)",
+    ),
+    run_id: str | None = typer.Option(
+        None,
+        "--run",
+        help="Primary run id with model_bundle.joblib",
+    ),
+    primary_threshold: float | None = typer.Option(
+        None,
+        "--primary-threshold",
+        min=0.0,
+        max=1.0,
+        help="Primary proba_take_profit gate (default: YAML or 0.35)",
+    ),
+    meta_threshold: float | None = typer.Option(
+        None,
+        "--meta-threshold",
+        min=0.0,
+        max=1.0,
+        help="Meta act probability floor used at compare time (default 0.5)",
+    ),
+) -> None:
+    """Train binary meta-label model on primary-gated train rows."""
+    cfg_path = _resolve_config(config)
+    cfg = load_experiment_config(cfg_path)
+    root = Path.cwd()
+    try:
+        run_dir = resolve_primary_run_dir(cfg, run_id, base_dir=root)
+        bundle_path, metrics = train_meta_label(
+            cfg,
+            run_dir,
+            primary_threshold=primary_threshold,
+            meta_threshold=meta_threshold,
+            base_dir=root,
+        )
+    except (FileNotFoundError, ValueError) as e:
+        typer.secho(str(e), err=True, fg=typer.colors.RED)
+        raise typer.Exit(code=1) from e
+
+    typer.echo(str(bundle_path.resolve()))
+    typer.echo(
+        f"meta_train_gated={metrics['n_meta_train_gated']}  "
+        f"meta_train_positive={metrics['n_meta_train_positive']}  "
+        f"primary_threshold={metrics['primary_threshold']}",
+    )
+
+
+@meta_label_app.command("compare")
+def meta_label_compare_cmd(
+    config: Path | None = typer.Option(
+        None,
+        "--config",
+        "-c",
+        exists=True,
+        dir_okay=False,
+        help="Experiment YAML",
+    ),
+    run_id: str | None = typer.Option(
+        None,
+        "--run",
+        help="Primary run id (must have model + meta_label bundles)",
+    ),
+    primary_threshold: float | None = typer.Option(
+        None,
+        "--primary-threshold",
+        min=0.0,
+        max=1.0,
+        help="Primary proba_take_profit gate",
+    ),
+    meta_threshold: float | None = typer.Option(
+        None,
+        "--meta-threshold",
+        min=0.0,
+        max=1.0,
+        help="Meta act probability floor",
+    ),
+    no_day_trade_cap: bool = typer.Option(
+        False,
+        "--no-day-trade-cap",
+        help="Disable day-trade cap in economics comparison",
+    ),
+) -> None:
+    """Compare argmax vs threshold vs meta-filter policies on val."""
+    cfg_path = _resolve_config(config)
+    cfg = load_experiment_config(cfg_path)
+    root = Path.cwd()
+    try:
+        run_dir = resolve_primary_run_dir(cfg, run_id, base_dir=root)
+        results = compare_entry_policies(
+            cfg,
+            run_dir,
+            primary_threshold=primary_threshold,
+            meta_threshold=meta_threshold,
+            enforce_day_trade_cap=not no_day_trade_cap,
+            base_dir=root,
+        )
+    except (FileNotFoundError, ValueError) as e:
+        typer.secho(str(e), err=True, fg=typer.colors.RED)
+        raise typer.Exit(code=1) from e
+
+    typer.echo(str((run_dir / "meta_label_compare.json").resolve()))
+    typer.echo(format_compare_report(results))
 
 
 def main() -> None:

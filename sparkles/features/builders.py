@@ -25,6 +25,8 @@ class EntryFeatureContext:
     entry_positions: pd.Series
     feature_config: FeatureConfig
     exchange_timezone: str
+    market_spy_1m: pd.DataFrame | None = None
+    market_vix_1d: pd.DataFrame | None = None
 
 
 def build_log_entry_close(ctx: EntryFeatureContext) -> pd.DataFrame:

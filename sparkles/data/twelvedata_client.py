@@ -152,13 +152,17 @@ def make_td_client(
     )
 
 
-def fetch_ohlcv_1min(
+def fetch_ohlcv(
     cfg: ExperimentConfig,
     api_key: str,
     window_start: date,
     window_end: date,
+    *,
+    symbol: str,
+    interval: str,
+    exchange: str | None = None,
 ) -> pd.DataFrame:
-    """Fetch 1m OHLCV for [window_start, window_end] (inclusive calendar dates)."""
+    """Fetch OHLCV for [window_start, window_end] (inclusive calendar dates)."""
     policy = RetryPolicy(max_attempts=cfg.retry_max_attempts)
     client = make_td_client(
         api_key,
@@ -167,22 +171,40 @@ def fetch_ohlcv_1min(
         per_minute_credit_wait_seconds=cfg.twelvedata_per_minute_credit_wait_seconds,
     )
     kwargs: dict[str, object] = {
-        "symbol": cfg.symbol,
-        "interval": "1min",
+        "symbol": symbol,
+        "interval": interval,
         "start_date": window_start.isoformat(),
         "end_date": window_end.isoformat(),
         "outputsize": cfg.twelvedata_outputsize,
         "order": "asc",
         "timezone": cfg.exchange_timezone,
     }
-    if cfg.twelvedata_exchange is not None:
-        kwargs["exchange"] = cfg.twelvedata_exchange
+    ex = exchange if exchange is not None else cfg.twelvedata_exchange
+    if ex is not None:
+        kwargs["exchange"] = ex
     ts = client.time_series(**kwargs)
     df = ts.as_pandas()
     if df is None or df.empty:
         return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
-    df = normalize_ohlcv_frame(df)
-    return df
+    return normalize_ohlcv_frame(df)
+
+
+def fetch_ohlcv_1min(
+    cfg: ExperimentConfig,
+    api_key: str,
+    window_start: date,
+    window_end: date,
+) -> pd.DataFrame:
+    """Fetch 1m OHLCV for [window_start, window_end] (inclusive calendar dates)."""
+    return fetch_ohlcv(
+        cfg,
+        api_key,
+        window_start,
+        window_end,
+        symbol=cfg.symbol,
+        interval="1min",
+        exchange=cfg.twelvedata_exchange,
+    )
 
 
 def normalize_ohlcv_frame(df: pd.DataFrame) -> pd.DataFrame:

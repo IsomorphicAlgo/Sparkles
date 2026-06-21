@@ -1,0 +1,48 @@
+# Champion + I4 uniqueness weights (merge onto rklb_daytrade_v2.yaml)
+# Same hyperparams/features as rklb_daytrade_champion_v1.yaml with
+# train.sample_weight_method: uniqueness (AFML avg inverse concurrency).
+#
+# Prerequisites (same as champion v1):
+#   sparkles label -c configs/experiments/rklb_daytrade_v2.yaml
+#   sparkles ingest -c configs/experiments/rklb_daytrade_v2.yaml -s SPY -i 1min
+#   sparkles ingest -c configs/experiments/rklb_daytrade_v2.yaml -s VIXY -i 1day
+#
+# Train:
+#   python scripts/run_trials.py --base configs/experiments/rklb_daytrade_v2.yaml \
+#     --preset configs/experiments/presets/rklb_daytrade_champion_uniqueness_v1.yaml
+
+train:
+  experiment_name: rklb_daytrade_champion_uniqueness_v1
+  notes: "Champion v1 + I4 uniqueness — G1+G2+G3, depth 3, lr 0.08, n_estimators 127"
+  sample_weight_method: uniqueness
+  export_predictions: val
+
+model:
+  type: xgboost_classifier
+  random_seed: 42
+  class_weight: balanced
+  xgb_max_depth: 3
+  xgb_n_estimators: 127
+  xgb_learning_rate: 0.08
+  xgb_subsample: 0.8
+  xgb_colsample_bytree: 0.8
+
+preprocess:
+  scaler: none
+
+features:
+  returns_multi_horizon: true
+  returns_horizons_bars: [1, 5, 10, 15, 30, 60]
+  realized_vol_multi: true
+  realized_vol_windows_bars: [5, 10, 15, 30]
+  realized_vol_include_ratio: true
+  range_vol_multi: true
+  range_vol_window_bars: 10
+  range_vol_include_atr_norm: true
+  session_time: true
+  volume_context: true
+  volume_median_window_bars: 60
+  vwap_distance: true
+  bar_microstructure: true
+  market_context: true
+  market_spy_return_bars: 15

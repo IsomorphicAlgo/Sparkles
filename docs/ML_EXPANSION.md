@@ -25,15 +25,27 @@ todos:
     status: complete
   - id: feature-expansion-g2
     content: "Phase G2: Session/time + volume context (rel volume, VWAP distance) ✅"
-    status: pending
+    status: complete
   - id: feature-expansion-g3
-    content: "Phase G3: Bar microstructure + optional market context (SPY/VIX ingest)"
-    status: pending
+    content: "Phase G3: Bar microstructure + optional market context (SPY/VIX ingest) ✅"
+    status: complete
   - id: multi-symbol
-    content: "Phase H: Multi-symbol ingest/label/train design (after G stabilizes on one ticker)"
+    content: "Phase H: Multi-symbol ingest/label/train design (deferred until after Phase I)"
     status: pending
+  - id: phase-i-val-backtest
+    content: "Phase I1: Val backtest — simulated barrier PnL from predictions + labeled cache ✅"
+    status: complete
+  - id: phase-i-tp-policy
+    content: "Phase I2: TP probability threshold policy (not argmax) ✅"
+    status: complete
+  - id: phase-i-meta-label
+    content: "Phase I3: Meta-labeling spike — binary act-on-entry filter ✅"
+    status: complete
+  - id: phase-i-sample-weights
+    content: "Phase I4: AFML sample weights (label uniqueness) ✅"
+    status: complete
   - id: afml-advanced
-    content: "Phase I: AFML-style sample weights, purged CV, optional meta-labeling"
+    content: "Phase I4b–c (optional): purged CV, fractional differentiation"
     status: pending
 isProject: false
 ---
@@ -145,14 +157,20 @@ This file is the **living roadmap** for improving **models**, **hyperparameters*
 
 **Done when:** ✅ Session boundaries use **`exchange_timezone`**; tests in **`tests/test_session_features.py`**.
 
-### G3 — Bar microstructure and optional market regime
+### G3 — Bar microstructure and optional market regime ✅
 
-| Proposed YAML flag | Columns (draft) | Definition | Notes |
-|--------------------|-----------------|------------|-------|
-| **`bar_microstructure`** | `close_loc_value`, `bar_body_pct` | `(C−L)/(H−L)`, `(C−O)/C` on entry bar | OHLC-only microstructure proxies |
-| **`market_context`** (optional) | `spy_ret_15m`, `vix_chg_1d` | Trailing SPY return; VIX level change | Requires **extra ingest** symbols; behind explicit YAML block to preserve API credits |
+| YAML flag | Columns | Definition | Notes |
+|-----------|---------|------------|-------|
+| **`bar_microstructure`** | `close_loc_value`, `bar_body_pct` | `(C−L)/(H−L)`, `(C−O)/C` on entry bar | Implemented 2026-06-21 |
+| **`market_context`** | `spy_ret_{N}m`, `vix_chg_1d` | Trailing SPY 1m log return; prior-session daily pct change of **volatility proxy** | **`market_spy_return_bars`** (default 15); requires **`context_ingest`**. TwelveData has **no spot VIX/^VIX** — use **VIXY** (or VXX) **`1day`** + **`twelvedata_exchange: CBOE`**. Feature column name stays `vix_chg_1d`. |
 
-**Done when:** G3 microstructure needs no new data vendor; **`market_context`** documents credit cost and cache paths.
+**Context ingest (YAML):** list SPY/VIX under **`context_ingest.symbols`** with the **same `data_start`/`data_end`** as the main symbol. **`sparkles ingest`** downloads RKLB plus context symbols (respects cache TTL; use **`--force`** only when needed).
+
+**Cache paths:** `data/cache/SPY_1min_{start}_{end}.parquet`, `data/cache/VIXY_1day_{start}_{end}.parquet` (VIXY + CBOE exchange — not spot VIX). Download: **`sparkles ingest -c … -s SPY -i 1min`**, **`-s VIXY -i 1day`**.
+
+**Preset:** **`configs/experiments/presets/rklb_daytrade_g1_g2_g3_v1.yaml`**.
+
+**Done when:** ✅ Microstructure needs no extra vendor data; **`market_context`** documents credit cost, cache paths, and validates SPY+VIX in YAML.
 
 ### Phase G — evaluation habit
 
@@ -191,18 +209,89 @@ After each G slice lands, compare to **`xgb_d3_reg_v1`** preset on **the same** 
 
 ---
 
-### Phase I — AFML-style training hygiene (optional, after G or H)
+### Phase I — Validation economics and tradable policy (post–G; before H)
 
-Lower priority than G1–G2 unless validation overfitting becomes the bottleneck.
+**Context:** **G1–G3 are complete** on RKLB day-trade v2. The current champion preset is **`configs/experiments/presets/rklb_daytrade_champion_v1.yaml`** (reproduces **`Trial_RB_G1_G2_G3_v1`**, run **`20260621T161419_221266Z`**: val macro F1 **~0.525**, best **balanced** take-profit F1 among full G1+G2+G3 trials). Classification metrics answer “did we predict the label?” — not “would this policy trade profitably?” **Phase I** closes that gap **before** multi-symbol (**H**) or live / Robinhood paths.
+
+**Repo state (2026-06-21):** **`sparkles backtest`** simulates val policy PnL from **`predictions.parquet`** + labeled cache → **`backtest_summary.json`** + **`backtest_trades.parquet`**. Threshold sweep (**I2**) and meta-label trainer (**I3**) are **not** implemented yet.
+
+**Non-negotiable workflow (same as `plan.md`):**
+
+1. **Do not start the next I-slice** until the owner explicitly approves in chat (e.g. “approved — continue to I2”) or updates this doc / **`plan.md`**.
+2. **Append** the [Progress & change log](#progress--change-log-append-only) when a slice lands.
+3. **No TwelveData polling loops** — backtests read **cached** labeled + ingest Parquet and exported predictions only.
+
+**Champion baseline for all I slices:** train with **`rklb_daytrade_champion_v1.yaml`** on **`rklb_daytrade_v2.yaml`**; compare new tooling against **`metrics.json`** *and* the new economics metrics (I1+).
+
+---
+
+#### I1 — Val backtest from labeled outcomes ✅
+
+| | |
+|--|--|
+| **Goal** | Turn val **`predictions.parquet`** + labeled cache into a **simple simulated long-only policy report**: entries taken, outcome mix, gross return proxy per trade, cumulative val curve, optional day-trade ledger stats. |
+| **Policy v1** | **`y_pred == take_profit`** (argmax). **PnL:** TP → **`+tp_move_effective`**, SL → **`-sl_move`**, vertical/end_of_data → OHLCV close at **`bars_forward`**. |
+| **CLI** | **`sparkles backtest -c configs/experiments/rklb_daytrade_v2.yaml --run <run_id>`** (default: latest run with predictions). Flags: **`--split val`**, **`--no-day-trade-cap`**. |
+| **Artifacts** | **`backtest_summary.json`**, **`backtest_trades.parquet`** next to **`metrics.json`**. Module: **`sparkles/backtest/`**; tests **`tests/test_val_backtest.py`**. |
+| **Champion sanity (2026-06-21)** | Run **`20260621T161419_221266Z`**: 133 val signals → **70 taken** (63 blocked by 3-in-5 day-trade cap on same-session exits); hit rate TP on taken **4.3%**; gross return sum **+0.90** (fractional, overlapping entries, no fees). |
+| **Done when** | ✅ Owner can run backtest on champion without API calls; assumptions in **`DEVELOPER.md`**. |
+| **Owner approval to proceed to I2** | `[ ]` Date: ___________ |
+
+---
+
+#### I2 — TP probability threshold policy ✅
+
+| | |
+|--|--|
+| **Goal** | Replace **argmax** entry rule with **`proba_take_profit >= threshold`**; sweep thresholds on **val only** and report precision/recall **and** backtest economics from I1. |
+| **CLI** | **`sparkles backtest --threshold 0.35`** — single threshold run. **`sparkles backtest --sweep`** — grid (default step **0.05**) → **`backtest_threshold_sweep.csv`** + **`.json`** with **`suggested_threshold`**. |
+| **YAML (opt-in)** | **`train.entry_threshold_take_profit`** — when set, **`sparkles backtest`** (no **`--threshold`**) uses threshold policy; **train fit unchanged** (argmax labels only). |
+| **Champion sweep (2026-06-21, run `20260621T161419_221266Z`)** | Argmax (I1): 133 signals, **4.3%** hit on taken. Threshold **0.35**: 190 signals, **12.1%** precision, **29%** recall, gross sum **+1.48** (100 taken). Threshold **0.50**: 63 signals, **15.9%** precision. Mechanical max-precision suggestion at **0.65** (6 signals, 50% precision) — too sparse for production; **practical knee ~0.35–0.50**. |
+| **Done when** | ✅ Sweep on champion val without API calls; default backtest remains argmax unless **`--threshold`** or YAML opt-in. |
+| **Owner approval to proceed to I3** | `[ ]` Date: ___________ |
+
+---
+
+#### I3 — Meta-labeling spike ✅
+
+| | |
+|--|--|
+| **Goal** | AFML-style **secondary binary model**: “**act on this entry?**” on top of primary **`proba_take_profit`** gate. |
+| **CLI** | **`sparkles meta-label train -c … --run <primary_id>`** → **`meta_label_bundle.joblib`** + **`meta_label_metrics.json`**. **`sparkles meta-label compare …`** → **`meta_label_compare.json`** (argmax vs threshold vs meta on val). Uses frozen **`experiment_config.json`** from the primary run when present. |
+| **Train contract** | Meta fit rows = **train split only**, primary-gated (`proba_take_profit >= primary_threshold`, default **0.35**). Target = **`y_true == take_profit`**. Features = primary **`proba_*`**, **`max_proba`**. |
+| **Champion compare (2026-06-21, τ=0.35, meta_act=0.5)** | **argmax:** 133 signals, 13.5% precision, gross **+0.90**. **threshold:** 190 signals, 12.1% precision, gross **+1.48**. **meta:** 101 signals, **16.8%** precision, gross **+1.14** — higher precision, fewer false entries vs threshold-only. |
+| **Done when** | ✅ End-to-end val comparison on champion; documented in **`DEVELOPER.md`**. Train **`run_train`** unchanged. |
+| **Owner approval to proceed to I4+ or H** | `[ ]` Date: ___________ |
+
+---
+
+#### I4 — Sample weights (label uniqueness) ✅
+
+| | |
+|--|--|
+| **Goal** | Down-weight **overlapping** triple-barrier labels when **`label_entry_stride` < barrier horizon** (AFML avg inverse concurrency using **`bars_forward`**). |
+| **YAML (opt-in)** | **`train.sample_weight_method: none \| uniqueness`** — default **`none`** preserves champion / prior runs. Combines with **`model.class_weight`** when both set (product per row). |
+| **Implementation** | **`sparkles/models/sample_weights.py`**; wired in **`run_train`** → **`metrics.json`** records **`sample_weight_method`**, **`sample_weight_mean`**, **`sample_weight_min`**. |
+| **When to use** | Strided day-trade labels (e.g. stride **10**) where many entries share overlapping forward paths; compare val F1 / backtest before promoting. |
+| **Done when** | ✅ Opt-in YAML + tests **`test_sample_weights.py`**; default unchanged. |
+
+#### I4b–c — Optional backlog (**awaiting owner approval**)
 
 | Item | Purpose |
 |------|---------|
+| **Purged / embargo CV** | Reduce leakage across overlapping label windows in **`run_trials.py`** / notebook sweeps |
 | **Fractional differentiation** | Stationary features that retain memory (López de Prado); alternative to raw **`log_entry_close`** |
-| **Sample weights** | Uniqueness / time decay for overlapping triple-barrier labels |
-| **Purged / embargo CV** | Reduce leakage across overlapping label windows in hyperparameter search |
-| **Meta-labeling** | Primary model for side, secondary for “take this bet” (requires new label column or filter) |
 
-**Done when:** At least one item is implemented with tests and documented tradeoffs; no default change that breaks Phase 1 reproducibility without opt-in YAML.
+---
+
+**Phase I — evaluation habit**
+
+After **I1**, every model trial report should include **both**:
+
+- Classification: **`val_f1_macro`**, per-class val F1 (especially **`take_profit`**).
+- Economics: val **entries**, **hit rate on acted entries**, **gross PnL proxy**, simple **max drawdown** (definitions fixed in I1 doc).
+
+Do **not** tune hyperparameters on val economics until I1 exists — otherwise val becomes a second training set.
 
 ---
 
@@ -225,9 +314,11 @@ Lower priority than G1–G2 unless validation overfitting becomes the bottleneck
 
 **Completed:** A → B → C → D → E → F
 
-**Next (owner-approved slices):** **G3** → **H** (multi-symbol, if desired) → **I** (AFML extras as needed). **G1** and **G2** complete.
+**Completed:** **G1**, **G2**, **G3** on RKLB day-trade v2.
 
-B before C gave better ROI than jumping to XGBoost; **G before H** follows the same logic for features vs universe size.
+**Next (owner-approved slices):** **Phase I** (**I1** val backtest → **I2** TP threshold policy → **I3** meta-label spike) → optional **I4+** (sample weights, purged CV) → **Phase H** (multi-symbol) only after I stabilizes tradable metrics on one ticker.
+
+B before C gave better ROI than jumping to XGBoost; **G before H** and **I before H** follow the same logic: prove features and **policy economics** on one symbol before scaling universe or going live.
 
 ---
 
@@ -275,3 +366,9 @@ For reviewers — what ships today when all **`features.*`** flags are **true** 
 | 2026-06-20 | **Feature review + roadmap Phases G–I:** entry-time expansion backlog (returns, multi-scale vol, session/volume, microstructure, optional market context); multi-symbol Phase H; AFML Phase I; **features-before-symbols** guidance. Doc only — no code. | `docs/ML_EXPANSION.md`, `plan.md` | **Phase G planning** |
 | 2026-06-20 | **Phase G1 complete (owner approved):** `returns_multi_horizon`, `realized_vol_multi`, `range_vol_multi` YAML + builders; full-OHLCV trailing windows; warm-up row drop; preset **`g1_features_v1.yaml`**; tests **`test_intraday_features.py`**. | `sparkles/config/schema.py`, `sparkles/features/intraday.py`, `sparkles/features/builders.py`, `sparkles/features/dataset.py`, `sparkles/features/registry.py`, `configs/experiments/presets/g1_features_v1.yaml`, `tests/`, `DEVELOPER.md`, `docs/ML_EXPANSION.md`, `plan.md` | **Phase G1** |
 | 2026-06-21 | **Phase G2 complete (owner approved):** `session_time`, `volume_context`, `vwap_distance` YAML + builders in **`session.py`**; preset **`rklb_daytrade_g1_g2_v1.yaml`**; tests **`test_session_features.py`**. | `sparkles/features/session.py`, `sparkles/config/schema.py`, `sparkles/features/registry.py`, `sparkles/features/dataset.py`, `configs/experiments/presets/rklb_daytrade_g1_g2_v1.yaml`, `tests/`, `DEVELOPER.md`, `docs/ML_EXPANSION.md`, `plan.md` | **Phase G2** |
+| 2026-06-21 | **Phase G3 complete (owner approved):** `bar_microstructure`, `market_context`; **`context_ingest`** SPY/VIX download; preset **`rklb_daytrade_g1_g2_g3_v1.yaml`**. | `sparkles/features/microstructure.py`, `sparkles/features/market_context.py`, `sparkles/data/context_ingest.py`, `sparkles/config/schema.py`, `configs/experiments/rklb_daytrade_v2.yaml`, `tests/test_g3_features.py`, `DEVELOPER.md`, `docs/ML_EXPANSION.md`, `plan.md` | **Phase G3** |
+| 2026-06-21 | **Champion preset + Phase I plan:** **`rklb_daytrade_champion_v1.yaml`** (G1+G2+G3 + Trial_RB_G1_G2_G3_v1 hparams); Phase I split into **I1** val backtest, **I2** TP threshold policy, **I3** meta-label spike, **I4+** AFML backlog; H deferred until after I. | `configs/experiments/presets/rklb_daytrade_champion_v1.yaml`, `docs/ML_EXPANSION.md`, `DEVELOPER.md`, `plan.md` | **Phase I planning** — **awaiting owner approval for I1** |
+| 2026-06-21 | **Phase I1 complete (owner approved):** **`sparkles backtest`** — val policy PnL from **`predictions.parquet`** + labeled cache; **`backtest_summary.json`** / **`backtest_trades.parquet`**; day-trade ledger optional; tests **`test_val_backtest.py`**. | `sparkles/backtest/`, `sparkles/cli.py`, `tests/test_val_backtest.py`, `DEVELOPER.md`, `docs/ML_EXPANSION.md`, `plan.md` | **Phase I1** — **blocked until owner approves I2** |
+| 2026-06-21 | **Phase I2 complete (owner approved):** TP threshold policy (**`--threshold`**, **`--sweep`**); **`train.entry_threshold_take_profit`** YAML opt-in; **`backtest_threshold_sweep.csv/json`**; tests **`test_threshold_sweep.py`**. Champion knee ~**0.35–0.50** precision. | `sparkles/backtest/threshold_sweep.py`, `sparkles/config/schema.py`, `sparkles/cli.py`, `tests/`, `DEVELOPER.md`, `docs/ML_EXPANSION.md`, `plan.md` | **Phase I2** — **blocked until owner approves I3** |
+| 2026-06-21 | **Phase I3 complete (owner approved):** **`sparkles meta-label train/compare`**; binary filter on primary-gated signals; **`meta_label_*` artifacts**; tests **`test_meta_label.py`**. Champion: meta **16.8%** precision vs threshold **12.1%** at τ=0.35. | `sparkles/backtest/meta_label.py`, `sparkles/cli.py`, `sparkles/config/schema.py`, `tests/`, `DEVELOPER.md`, `docs/ML_EXPANSION.md`, `plan.md` | **Phase I3** — **blocked until owner approves I4+ or H** |
+| 2026-06-21 | **Phase I4 complete (owner approved):** **`train.sample_weight_method: uniqueness`** — AFML label-uniqueness weights at fit; opt-in; tests **`test_sample_weights.py`**. | `sparkles/models/sample_weights.py`, `sparkles/models/train.py`, `sparkles/config/schema.py`, `tests/`, `DEVELOPER.md`, `docs/ML_EXPANSION.md`, `plan.md` | **Phase I4** — **blocked until owner approves I4b/c or H** |

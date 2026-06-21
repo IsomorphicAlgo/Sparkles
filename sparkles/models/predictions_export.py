@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 
-from sparkles.features.dataset import entry_session_dates
+from sparkles.features.time import entry_session_dates
 
 
 def _proba_column_name(class_label: str) -> str:

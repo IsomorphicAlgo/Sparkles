@@ -20,4 +20,6 @@ def test_feature_config_rejects_all_disabled() -> None:
             session_time=False,
             volume_context=False,
             vwap_distance=False,
+            bar_microstructure=False,
+            market_context=False,
         )

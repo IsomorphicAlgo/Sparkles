@@ -2,9 +2,9 @@
 
 from sparkles.features.dataset import (
     build_feature_matrix,
-    entry_session_dates,
     train_val_masks_by_session_date,
 )
+from sparkles.features.time import entry_session_dates
 from sparkles.features.volatility import (
     TRADING_DAYS_PER_YEAR,
     add_volatility_columns,

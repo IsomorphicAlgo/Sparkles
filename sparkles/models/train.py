@@ -13,11 +13,6 @@ from typing import Any
 
 import pandas as pd
 from sklearn.metrics import accuracy_score
-
-from sparkles.models.evaluation import (
-    classification_report_dict,
-    f1_macro_weighted,
-)
 from sklearn.preprocessing import LabelEncoder
 
 from sparkles.config.schema import ExperimentConfig
@@ -30,20 +25,24 @@ from sparkles.labels.triple_barrier import labeled_parquet_path
 from sparkles.models.estimators import (
     build_estimator,
     resolve_logistic_class_weight,
-    xgboost_fit_sample_weight,
 )
+from sparkles.models.evaluation import (
+    classification_report_dict,
+    f1_macro_weighted,
+)
+from sparkles.models.predictions_export import predictions_frame
 from sparkles.models.preprocess import (
     build_training_estimator,
     fit_training_estimator,
     predict_values,
 )
-from sparkles.models.predictions_export import predictions_frame
 from sparkles.models.registry import (
     new_run_id,
     run_artifact_dir,
     save_bundle,
     save_json,
 )
+from sparkles.models.sample_weights import resolve_fit_sample_weights
 from sparkles.tracking.experiments import append_experiment_record
 
 logger = logging.getLogger(__name__)
@@ -82,6 +81,7 @@ class TrainDryRunReport:
     experiment_name: str | None
     notes: str | None
     val_rows_dropped_unseen: int
+    sample_weight_method: str
     ready: bool
     issues: tuple[str, ...] = field(default_factory=tuple)
 
@@ -124,7 +124,7 @@ def prepare_training_data(
         labels=labels,
         ohlcv=ohlcv,
     )
-    X, y = build_feature_matrix(labels, ohlcv, cfg)
+    X, y = build_feature_matrix(labels, ohlcv, cfg, base_dir=base_dir)
     train_m, val_m = train_val_masks_by_session_date(X.index, cfg)
 
     X_tr, y_tr = X.loc[train_m], y.loc[train_m]
@@ -212,6 +212,7 @@ def dry_run_train(
             experiment_name=tc.experiment_name,
             notes=tc.notes,
             val_rows_dropped_unseen=prep.val_rows_dropped_unseen,
+            sample_weight_method=tc.sample_weight_method,
             ready=True,
             issues=(),
         )
@@ -228,6 +229,7 @@ def dry_run_train(
             experiment_name=tc.experiment_name,
             notes=tc.notes,
             val_rows_dropped_unseen=0,
+            sample_weight_method=tc.sample_weight_method,
             ready=False,
             issues=(str(e),),
         )
@@ -256,6 +258,7 @@ def format_dry_run_report(report: TrainDryRunReport) -> str:
         )
     enabled = [k for k, v in report.features_enabled.items() if v is True]
     lines.append(f"features_enabled: {', '.join(enabled) or '(none)'}")
+    lines.append(f"sample_weight_method: {report.sample_weight_method}")
     lines.append(f"feature_columns ({len(report.feature_columns)}): "
                  + ", ".join(report.feature_columns))
     if report.issues:
@@ -277,6 +280,12 @@ def run_train(
     ``labels`` / ``ohlcv`` override disk loads (used by unit tests).
     """
     root = Path.cwd() if base_dir is None else base_dir
+    labels, ohlcv = _load_labels_ohlcv(
+        cfg,
+        base_dir=base_dir,
+        labels=labels,
+        ohlcv=ohlcv,
+    )
     prep = prepare_training_data(
         cfg,
         base_dir=base_dir,
@@ -296,9 +305,14 @@ def run_train(
     )
     clf = build_estimator(cfg, logistic_class_weight=sk_cw)
     est = build_training_estimator(cfg, clf)
-    sw: Any = None
-    if cfg.model.type == "xgboost_classifier":
-        sw = xgboost_fit_sample_weight(cfg.model, le, y_tr_e)
+    sw, sw_summary = resolve_fit_sample_weights(
+        cfg,
+        le,
+        y_tr_e,
+        X_tr.index,
+        labels,
+        ohlcv,
+    )
     fit_training_estimator(est, X_tr, y_tr_e, sample_weight=sw)
 
     pred_tr = predict_values(est, X_tr)
@@ -329,6 +343,7 @@ def run_train(
         "features": feat_dump,
         "preprocess_scaler": cfg.preprocess.scaler,
         "classification_report_val": report_val,
+        **sw_summary,
     }
 
     pred_parts: list[pd.DataFrame] = []
@@ -410,6 +425,7 @@ def run_train(
         "features": feat_dump,
         "preprocess_scaler": cfg.preprocess.scaler,
         "predictions_export": tc.export_predictions,
+        "sample_weight_method": tc.sample_weight_method,
         "experiment_config": experiment_snapshot,
     }
     append_experiment_record(art_root, log_payload)

@@ -1,0 +1,26 @@
+# Grid search spec — merges base + preset, then sweeps `params` (cartesian product).
+#
+# Dry-run (shows combo count + row counts, no fit):
+#   python scripts/run_grid_search.py --dry-run --grid configs/experiments/grids/rklb_daytrade_xgb_v1.yaml
+#
+# Train all combos (~seconds each; 12 combos ≈ 1–3 min):
+#   python scripts/run_grid_search.py --grid configs/experiments/grids/rklb_daytrade_xgb_v1.yaml
+
+grid_name: rklb_daytrade_xgb_v1
+
+base: configs/experiments/rklb_daytrade_v2.yaml
+preset: configs/experiments/presets/rklb_daytrade_champion_uniqueness_v1.yaml
+
+experiment_name_prefix: grid_rklb_xgb
+notes_prefix: "Grid xgb sweep from champion_uniqueness_v1"
+
+# Applied to every combo before `params` (speed: skip predictions during grid)
+fixed:
+  train.export_predictions: none
+
+output: artifacts/grid_search/rklb_daytrade_xgb_v1.csv
+
+params:
+  model.xgb_n_estimators: [60, 127, 255]
+  model.xgb_learning_rate: [0.02, 0.08]
+  model.xgb_max_depth: [3, 4]

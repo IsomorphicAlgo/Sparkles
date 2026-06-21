@@ -33,12 +33,14 @@ def test_rklb_daytrade_v2_config_and_path() -> None:
     repo = Path(__file__).resolve().parents[1]
     path = repo / "configs" / "experiments" / "rklb_daytrade_v2.yaml"
     cfg = load_experiment_config(path)
-    assert cfg.profit_barrier_base == 0.03
-    assert cfg.stop_loss_base == 0.05
-    assert cfg.min_profit_per_trade_pct == 0.05
+    assert cfg.profit_barrier_base == 0.05
+    assert cfg.stop_loss_base == 0.02
+    assert cfg.min_profit_per_trade_pct == 0.015
     assert cfg.vertical_max_trading_days == 1
-    assert cfg.label_entry_stride == 15
+    assert cfg.label_entry_stride == 10
     assert cfg.label_cache_suffix == "dt_v2"
     assert cfg.train.experiment_name == "rklb_daytrade_v2"
+    tickers = {s.symbol.upper() for s in cfg.context_ingest.symbols}
+    assert tickers == {"SPY", "VIXY"}
     out = labeled_parquet_path(cfg, base_dir=repo)
-    assert out.name == "RKLB_labeled_2022-01-01_2026-03-30_s15_dt_v2.parquet"
+    assert out.name == "RKLB_labeled_2022-01-01_2026-03-30_s10_dt_v2.parquet"

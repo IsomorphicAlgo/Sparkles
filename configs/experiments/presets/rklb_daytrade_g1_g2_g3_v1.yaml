@@ -1,0 +1,27 @@
+# Overlay: day-trade v2 + G1 + G2 + G3 (merge onto rklb_daytrade_v2.yaml)
+# Prerequisite:
+#   sparkles ingest -c configs/experiments/rklb_daytrade_v2.yaml -s SPY -i 1min
+#   sparkles ingest -c configs/experiments/rklb_daytrade_v2.yaml -s VIXY -i 1day
+#   sparkles label -c configs/experiments/rklb_daytrade_v2.yaml
+
+train:
+  experiment_name: rklb_daytrade_g1_g2_g3_v1
+  notes: "Day-trade v2 + G1 + G2 + G3 microstructure + SPY/VIX context"
+  export_predictions: val
+
+features:
+  returns_multi_horizon: true
+  returns_horizons_bars: [3, 5, 10, 15, 30]
+  realized_vol_multi: true
+  realized_vol_windows_bars: [5, 15, 30]
+  realized_vol_include_ratio: true
+  range_vol_multi: true
+  range_vol_window_bars: 15
+  range_vol_include_atr_norm: true
+  session_time: true
+  volume_context: true
+  volume_median_window_bars: 60
+  vwap_distance: true
+  bar_microstructure: true
+  market_context: true
+  market_spy_return_bars: 15

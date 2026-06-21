@@ -24,8 +24,10 @@ from sparkles.features.session import (
     build_volume_context,
     build_vwap_distance,
 )
+from sparkles.features.microstructure import build_bar_microstructure
+from sparkles.features.market_context import build_market_context
 
-# Stable column order for default all-on configs (matches pre–Phase B + G1/G2 append).
+# Stable column order for default all-on configs (matches pre–Phase B + G1/G2/G3 append).
 _FEATURE_ORDER: Sequence[tuple[str, Callable[[EntryFeatureContext], pd.DataFrame]]] = (
     ("log_entry_close", build_log_entry_close),
     ("label_geometry", build_label_geometry),
@@ -37,6 +39,8 @@ _FEATURE_ORDER: Sequence[tuple[str, Callable[[EntryFeatureContext], pd.DataFrame
     ("session_time", build_session_time),
     ("volume_context", build_volume_context),
     ("vwap_distance", build_vwap_distance),
+    ("bar_microstructure", build_bar_microstructure),
+    ("market_context", build_market_context),
 )
 
 

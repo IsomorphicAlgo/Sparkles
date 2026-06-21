@@ -192,6 +192,19 @@ class FeatureConfig(BaseModel):
         default=False,
         description="(close - session VWAP) / session VWAP through entry bar",
     )
+    bar_microstructure: bool = Field(
+        default=False,
+        description="close_loc_value, bar_body_pct on the entry bar",
+    )
+    market_context: bool = Field(
+        default=False,
+        description="spy_ret_{N}m and vix_chg_1d from context_ingest Parquet",
+    )
+    market_spy_return_bars: int = Field(
+        default=15,
+        ge=1,
+        description="Trailing SPY 1m log-return lookback when market_context is on",
+    )
 
     @field_validator("returns_horizons_bars")
     @classmethod
@@ -227,15 +240,45 @@ class FeatureConfig(BaseModel):
                 self.session_time,
                 self.volume_context,
                 self.vwap_distance,
+                self.bar_microstructure,
+                self.market_context,
             ),
         ):
             raise ValueError(
                 "features: enable at least one feature group "
                 "(log_entry_close, label_geometry, intraday_range_pct, log1p_volume, "
                 "returns_multi_horizon, realized_vol_multi, range_vol_multi, "
-                "session_time, volume_context, vwap_distance)",
+                "session_time, volume_context, vwap_distance, bar_microstructure, "
+                "market_context)",
             )
         return self
+
+
+class ContextSymbolConfig(BaseModel):
+    """One extra symbol to cache for market_context (Phase G3)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    symbol: str = Field(min_length=1, description="Ticker, e.g. SPY or VIX")
+    interval: Literal["1min", "1day"] = Field(
+        default="1min",
+        description="TwelveData interval; use 1day for VIX daily change feature",
+    )
+    twelvedata_exchange: str | None = Field(
+        default=None,
+        description="Optional exchange id for TwelveData",
+    )
+
+
+class ContextIngestConfig(BaseModel):
+    """Optional context symbols downloaded with the same data_start/data_end as symbol."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    symbols: list[ContextSymbolConfig] = Field(
+        default_factory=list,
+        description="Extra tickers cached by sparkles ingest (SPY 1min, VIX 1day, etc.)",
+    )
 
 
 class PreprocessConfig(BaseModel):
@@ -283,6 +326,37 @@ class TrainConfig(BaseModel):
         default="val",
         description=(
             "Write predictions.parquet: val rows, train+val, or none (skip file)"
+        ),
+    )
+    entry_threshold_take_profit: float | None = Field(
+        default=None,
+        gt=0.0,
+        le=1.0,
+        description=(
+            "Optional backtest entry rule: enter when proba_take_profit >= threshold "
+            "(default backtest policy remains argmax when null)"
+        ),
+    )
+    meta_label_primary_threshold: float | None = Field(
+        default=None,
+        gt=0.0,
+        le=1.0,
+        description=(
+            "Phase I3: primary proba_take_profit gate for meta-label train/compare "
+            "(falls back to entry_threshold_take_profit, then 0.35)"
+        ),
+    )
+    meta_label_act_threshold: float = Field(
+        default=0.5,
+        gt=0.0,
+        le=1.0,
+        description="Phase I3: minimum meta-model act probability on gated primary signals",
+    )
+    sample_weight_method: Literal["none", "uniqueness"] = Field(
+        default="none",
+        description=(
+            "Phase I4: per-row fit weights — 'uniqueness' down-weights overlapping "
+            "triple-barrier labels (uses bars_forward); default none preserves prior runs"
         ),
     )
 
@@ -518,6 +592,10 @@ class ExperimentConfig(BaseModel):
     features: FeatureConfig = Field(default_factory=lambda: FeatureConfig())
     journal: JournalConfig = Field(default_factory=lambda: JournalConfig())
     paths: PathsConfig = Field(default_factory=lambda: PathsConfig())
+    context_ingest: ContextIngestConfig = Field(
+        default_factory=lambda: ContextIngestConfig(),
+        description="Optional SPY/VIX (etc.) cache for market_context features",
+    )
     live_ingest: LiveIngestConfig = Field(
         default_factory=lambda: LiveIngestConfig(),
         description="Phase 2 near-live refresh (Plan A); disabled by default",
@@ -533,4 +611,21 @@ class ExperimentConfig(BaseModel):
         if self.val_start is not None and self.val_end is not None:
             if self.val_end < self.val_start:
                 raise ValueError("val_end must be on or after val_start")
+        if self.features.market_context:
+            tickers = {s.symbol.upper().lstrip("^") for s in self.context_ingest.symbols}
+            if "SPY" not in tickers:
+                raise ValueError(
+                    "features.market_context requires SPY (1min) in context_ingest",
+                )
+            vol = [
+                s
+                for s in self.context_ingest.symbols
+                if s.interval == "1day" and s.symbol.upper().lstrip("^") != "SPY"
+            ]
+            if not vol:
+                raise ValueError(
+                    "features.market_context requires a 1day volatility proxy in "
+                    "context_ingest (TwelveData has no spot VIX/^VIX; use VIXY with "
+                    "twelvedata_exchange: CBOE)",
+                )
         return self
