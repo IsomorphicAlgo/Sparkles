@@ -7,9 +7,9 @@ Quick reference for **where to change what** in Phase 1. Conceptual methodology:
 | Path | Role |
 |------|------|
 | **`sparkles/`** | Package: `config`, `data`, `features`, `journal`, `labels`, `models`, `reporting`, `risk`, `tracking` (`experiments.py`, `experiments_csv.py`), `cli.py`. |
-| **`configs/experiments/`** | Experiment YAML (e.g. `rklb_baseline.yaml`); validated by `sparkles/config/schema.py`. |
+| **`configs/experiments/`** | Experiment YAML (e.g. `rklb_baseline.yaml`); **`presets/`** overlays for batch trials. |
 | **`tests/`** | `pytest` only; mirror modules under `sparkles/` where practical. |
-| **`scripts/`** | Non-installed helpers (e.g. `quick_try_vol.py`); run with `python scripts/...`. |
+| **`scripts/`** | Non-installed helpers (`quick_try_vol.py`, **`run_trials.py`**); run with `python scripts/...`. |
 | **`docs/`** | Longer-lived docs beyond root summaries (`ML_EXPANSION.md`, this layout index in `docs/README.md`). |
 | **`data/cache/`** | Parquet from **`ingest`** / **`label`** (gitignored). |
 | **`data/journal/`** | Optional personal trade CSVs (see README there; `*.csv` gitignored). |
@@ -27,16 +27,30 @@ Quick reference for **where to change what** in Phase 1. Conceptual methodology:
 
 - **File:** `sparkles/models/train.py` — **`run_train(cfg)`** loads labeled + ingest Parquets, **`build_feature_matrix`**, time-splits, fits **`model.type`** via **`sparkles/models/estimators.py`**, writes **`model_bundle.joblib`**, **`metrics.json`**, **`experiment_config.json`** (full YAML-equivalent snapshot), and (by default) **`predictions.parquet`** per-row **`train.export_predictions`**: **`val`** (validation rows only), **`all`** (train+val), or **`none`**. Columns include **`entry_time`**, **`session_date`**, **`split`**, **`y_true`**, **`y_pred`**, per-class **`proba_*`**, **`max_proba`** when the estimator supports **`predict_proba`**. Path: **`{artifacts_dir}/{SYMBOL}/{run_id}/`**. Appends **`experiments.jsonl`** (includes nested **`experiment_config`** plus headline fields). CSV export: **`sparkles experiments export -c …`** → **`artifacts/training_log.csv`** by default; **`--all-symbols`** exports every symbol in the log.
 - **Estimators:** `sparkles/models/estimators.py` — **`build_estimator`**: `logistic_regression` (sklearn, core deps) or **`xgboost_classifier`** (install **`pip install -e ".[ml]"`**). XGBoost hyperparameters: **`model.xgb_n_estimators`**, **`xgb_max_depth`**, **`xgb_learning_rate`**, **`xgb_subsample`**, **`xgb_colsample_bytree`**, **`xgb_min_child_weight`**. YAML **`model.class_weight`** maps to sklearn for logistic regression and to **`sample_weight`** for XGBoost when not null.
+- **Preprocessing (Phase D):** **`preprocess.scaler`** in YAML — **`none`** (default), **`standard`**, or **`robust`**. Fitted **only on train** inside a sklearn **Pipeline** saved in **`model_bundle.joblib`** as **`estimator`**; bundle also stores **`preprocess_scaler`**. Reload helpers: **`sparkles/models/preprocess.py`** (`load_model_bundle`, `validate_bundle_preprocess`, `predict_from_bundle`). Trees (XGBoost) often need **`none`**; logistic may benefit from scaling.
 - **Registry:** `sparkles/models/registry.py` — `new_run_id`, `run_artifact_dir`, `save_bundle`, `save_json`.
 - **Features at entry only:** Controlled by **`features:`** in YAML (`FeatureConfig` in `schema.py`). Each flag includes a builder group from **`sparkles/features/registry.py`** (see **`sparkles/features/builders.py`**):
   - **`log_entry_close`:** column `log_entry_close` — `log(entry_close)` from the label row.
   - **`label_geometry`:** `sigma_ann_at_entry`, `vol_scale_ratio`, `tp_move_effective`, `sl_move` — barrier/vol snapshot from labeling.
   - **`intraday_range_pct`:** `(high − low) / entry_close` on the **entry bar** from ingest OHLCV (requires `high`, `low`, `close` on OHLCV).
   - **`log1p_volume`:** `log1p(volume)` on the entry bar (volume optional on OHLCV; missing → zeros).
+  - **`returns_multi_horizon` (G1):** `ret_{N}m` — log return over trailing *N* 1m bars ending at entry (default horizons 5, 15, 30, 60).
+  - **`realized_vol_multi` (G1):** `rv_{N}m` — std of 1m log returns over trailing window; optional `rv_ratio_{short}_{long}m`.
+  - **`range_vol_multi` (G1):** `parkinson_{N}m`, optional `atr_norm_{N}m` — range vol and normalized ATR (default window 30).
+  G1 groups read the **full ingest OHLCV** up to each entry bar (no lookahead). Rows before the warm-up window are dropped automatically (max horizon/window, default 120 bars).
   All default **true** (Phase 1 column set). No future path / `bars_forward` in the feature matrix.
 - **Config:** `model.*`, `train.*` (includes **`export_predictions`**), and **`features.*`**. Optional **`journal:`** — **`csv_path`**: your trade log (repo-relative or absolute). Optional **`live_ingest:`** — Phase 2 Plan A near-live refresh (**`enabled`** default **false**); see **`docs/plan-phase2-01-data-ingest.md`**. **CSV:** date column **`entry_date`**, **`date`**, **`open_date`**, or **`entry`** (ISO). Optional **`symbol`** / **`ticker`** filters rows to the experiment **`symbol`**. Extra columns (`exit_date`, `shares`, `pnl_pct`, `notes`, …) are kept in the merge output. **Long holds:** one row per **open** is fine; compare aligns on **entry session date** to aggregated model predictions that day (not daily P&L over the hold).
 - **Journal compare:** `sparkles journal compare -c …` — loads **`journal.csv_path`**, latest run with **`predictions.parquet`** (or **`--run <run_id>`**), aggregates predictions by **`session_date`** for **`--split val`** (default), **`train`**, or **`both`**, left-joins journal **`entry_date`**, writes **`journal_compare.csv`** in the run folder. Template: **`configs/examples/journal_trades.example.csv`**.
 - **Prerequisites:** `sparkles ingest` then `sparkles label` for the same `symbol`, `data_start`, `data_end`, and `label_entry_stride` as in the YAML.
+
+## Hyperparameter trials (ML expansion Phase E)
+
+- **Dry-run before train:** `sparkles train -c configs/experiments/rklb_baseline.yaml --dry-run` — prints train/val row counts, **class balance**, enabled **features**, and feature column names; exits **1** if ingest/label missing or split floors fail.
+- **Preset overlays:** `configs/experiments/presets/*.yaml` — **`xgb_d3_reg_v1.yaml`** is the current RKLB champion (2026-06-20); merge with **`load_experiment_config_merged(base, preset)`** or **`python scripts/run_trials.py --preset …`**
+- **Batch trials:** `python scripts/run_trials.py` (default base: **`rklb_baseline.yaml`**, all presets). Flags: **`--dry-run`**, **`--preset path/to/overlay.yaml`**, **`--no-export`**, **`-o artifacts/training_log.csv`**. After real trains, refreshes the wide CSV for spreadsheet comparison.
+- **Compare results:** **`sparkles experiments export -c …`** or open **`artifacts/training_log.csv`**; sort by **`val_f1_macro`** (preferred for imbalanced labels) or **`val_accuracy`**.
+- **Notebook console:** **`notebooks/sparkles_train_console.ipynb`** — edit parameters in cells, dry-run, train, trials table + charts (`pip install -e ".[notebook]"`).
+- **Feature expansion (planned):** Phases **G1–G3** (returns, vol, session/volume, microstructure) and **H** (multi-symbol) in **[docs/ML_EXPANSION.md](docs/ML_EXPANSION.md)** — **G1 complete** (`returns_multi_horizon`, `realized_vol_multi`, `range_vol_multi`); preset **`configs/experiments/presets/g1_features_v1.yaml`**. Implement **G2 on RKLB before** adding tickers.
 
 ## Labeling and minimum profit per trade
 
@@ -111,6 +125,7 @@ sparkles ingest -c configs/experiments/rklb_baseline.yaml --force --verbose
 sparkles label -c configs/experiments/rklb_baseline.yaml
 sparkles risk day-trades -c configs/experiments/rklb_baseline.yaml
 sparkles train -c configs/experiments/rklb_baseline.yaml
+sparkles train -c configs/experiments/rklb_baseline.yaml --dry-run
 sparkles report -c configs/experiments/rklb_baseline.yaml
 # Optional: sparkles report -c ... --run 20260411T015314_621888Z
 

@@ -1,0 +1,27 @@
+# Phase G1 — trailing returns, realized vol, Parkinson/ATR (merge onto rklb_baseline.yaml)
+# Adds 11 columns to the baseline 7 (ret x4, rv x2, rv_ratio, parkinson, atr_norm).
+# Compare val_f1_macro to xgb_d3_reg_v1 champion.
+
+train:
+  experiment_name: g1_features_v1
+  notes: "Phase G1: multi-horizon returns + RV + Parkinson/ATR on RKLB"
+  export_predictions: val
+
+features:
+  returns_multi_horizon: true
+  returns_horizons_bars: [5, 15, 30, 60]
+  realized_vol_multi: true
+  realized_vol_windows_bars: [30, 120]
+  realized_vol_include_ratio: true
+  range_vol_multi: true
+  range_vol_window_bars: 30
+  range_vol_include_atr_norm: true
+
+model:
+  type: xgboost_classifier
+  class_weight: balanced
+  xgb_max_depth: 3
+  xgb_n_estimators: 60
+  xgb_learning_rate: 0.08
+  xgb_subsample: 0.8
+  xgb_colsample_bytree: 0.8

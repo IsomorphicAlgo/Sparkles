@@ -65,6 +65,13 @@ model:
 #   notes: null
 #   export_predictions: val   # val | all | none — predictions.parquet next to metrics
 
+# Optional feature scaling (train-only fit; saved in model_bundle Pipeline)
+# preprocess:
+#   scaler: none   # none | standard | robust
+
+# preprocess.scaler — none (default), standard (StandardScaler), or robust (RobustScaler);
+#   fit on train rows only inside the saved Pipeline. Often helps logistic; trees may use none.
+#
 # Optional personal trades (see data/journal/README.md, configs/examples/journal_trades.example.csv)
 # journal:
 #   csv_path: data/journal/my_trades.csv
@@ -75,6 +82,15 @@ features:
   label_geometry: true
   intraday_range_pct: true
   log1p_volume: true
+  # Phase G1 (ML expansion) — trailing windows from full 1m history; default off
+  returns_multi_horizon: false
+  returns_horizons_bars: [5, 15, 30, 60]
+  realized_vol_multi: false
+  # realized_vol_windows_bars: [30, 120]
+  # realized_vol_include_ratio: true
+  # range_vol_multi: false
+  # range_vol_window_bars: 30
+  # range_vol_include_atr_norm: true
 
 paths:
   cache_dir: data/cache

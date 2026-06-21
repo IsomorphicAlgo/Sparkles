@@ -14,4 +14,7 @@ def test_feature_config_rejects_all_disabled() -> None:
             label_geometry=False,
             intraday_range_pct=False,
             log1p_volume=False,
+            returns_multi_horizon=False,
+            realized_vol_multi=False,
+            range_vol_multi=False,
         )

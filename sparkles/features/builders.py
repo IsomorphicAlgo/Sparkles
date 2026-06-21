@@ -11,6 +11,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from sparkles.config.schema import FeatureConfig
+
 
 @dataclass(frozen=True)
 class EntryFeatureContext:
@@ -19,6 +21,9 @@ class EntryFeatureContext:
     labels: pd.DataFrame
     aligned_ohlcv: pd.DataFrame
     entry_close: pd.Series
+    full_ohlcv: pd.DataFrame
+    entry_positions: pd.Series
+    feature_config: FeatureConfig
 
 
 def build_log_entry_close(ctx: EntryFeatureContext) -> pd.DataFrame:

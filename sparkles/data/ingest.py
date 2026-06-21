@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 import pandas as pd
 
 from sparkles.data.twelvedata_client import fetch_ohlcv_1min
+from sparkles.env import load_dotenv
 
 if TYPE_CHECKING:
     from sparkles.config.schema import ExperimentConfig
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 def require_api_key() -> str:
+    load_dotenv()
     key = os.environ.get("TWELVEDATA_API_KEY", "").strip()
     if not key:
         msg = (

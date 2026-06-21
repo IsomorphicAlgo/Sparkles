@@ -1,0 +1,21 @@
+# Champion overlay (RKLB trials, 2026-06-20) — merge onto rklb_baseline.yaml
+# Source run: 20260620T181553_966220Z
+#   val_f1_macro=0.436  val_accuracy=0.520  train_f1_macro=0.674  (val_n=396)
+# Requires: pip install -e ".[ml]"
+
+train:
+  experiment_name: xgb_d3_reg_v1
+  notes: "Champion RKLB XGB — depth 3, reg via lr/subsample/colsample (2026-06-20)"
+  export_predictions: val
+
+model:
+  type: xgboost_classifier
+  class_weight: balanced
+  xgb_max_depth: 3
+  xgb_n_estimators: 60
+  xgb_learning_rate: 0.08
+  xgb_subsample: 0.8
+  xgb_colsample_bytree: 0.8
+
+preprocess:
+  scaler: none

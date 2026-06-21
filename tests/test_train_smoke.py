@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 
 from sparkles.config.schema import ExperimentConfig, ModelConfig, TrainConfig
-from sparkles.models.train import run_train
+from sparkles.models.train import dry_run_train, run_train
 
 
 def _cfg(**kw: object) -> ExperimentConfig:
@@ -77,6 +77,10 @@ def test_run_train_writes_artifacts(tmp_path) -> None:
     assert (out / "model_bundle.joblib").is_file()
     assert (out / "metrics.json").is_file()
     assert (out / "experiment_config.json").is_file()
+    m = json.loads((out / "metrics.json").read_text(encoding="utf-8"))
+    assert "val_f1_macro" in m
+    assert "val_f1_weighted" in m
+    assert "classification_report_val" in m
     assert (out / "predictions.parquet").is_file()
     log = tmp_path / "artifacts" / "experiments.jsonl"
     assert log.is_file()
@@ -276,3 +280,66 @@ def test_drop_val_unseen_classes_false_raises(tmp_path) -> None:
     cfg = _cfg(train=TrainConfig(drop_val_unseen_classes=False))
     with pytest.raises(ValueError, match="unseen"):
         run_train(cfg, base_dir=tmp_path, labels=labels, ohlcv=ohlcv)
+
+
+def test_dry_run_train_ready(tmp_path) -> None:
+    tz = "America/New_York"
+    idx = pd.DatetimeIndex(
+        [
+            pd.Timestamp("2024-06-03 10:00", tz=tz),
+            pd.Timestamp("2024-06-03 11:00", tz=tz),
+            pd.Timestamp("2024-06-04 10:00", tz=tz),
+            pd.Timestamp("2024-06-04 11:00", tz=tz),
+            pd.Timestamp("2024-06-05 10:00", tz=tz),
+            pd.Timestamp("2024-06-05 11:00", tz=tz),
+            pd.Timestamp("2024-06-06 10:00", tz=tz),
+            pd.Timestamp("2024-06-06 11:00", tz=tz),
+        ],
+    )
+    ohlcv = pd.DataFrame(
+        {
+            "open": [100.0] * 8,
+            "high": [101.0] * 8,
+            "low": [99.0] * 8,
+            "close": [100.0] * 8,
+            "volume": [1e6] * 8,
+        },
+        index=idx,
+    )
+    outcomes = [
+        "take_profit",
+        "stop_loss",
+        "vertical",
+        "end_of_data",
+        "take_profit",
+        "stop_loss",
+        "vertical",
+        "take_profit",
+    ]
+    labels = pd.DataFrame(
+        {
+            "entry_close": [100.0] * 8,
+            "barrier_outcome": outcomes,
+            "sigma_ann_at_entry": [0.6] * 8,
+            "vol_scale_ratio": [1.0] * 8,
+            "tp_move_effective": [0.1] * 8,
+            "sl_move": [0.05] * 8,
+        },
+        index=idx,
+    )
+    cfg = _cfg(train=TrainConfig(experiment_name="dry-run-test"))
+    report = dry_run_train(cfg, base_dir=tmp_path, labels=labels, ohlcv=ohlcv)
+    assert report.ready is True
+    assert report.train_n == 4
+    assert report.val_n == 4
+    assert report.experiment_name == "dry-run-test"
+    assert len(report.feature_columns) >= 1
+    assert sum(report.train_class_balance.values()) == report.train_n
+
+
+def test_dry_run_train_missing_parquet(tmp_path) -> None:
+    cfg = _cfg()
+    report = dry_run_train(cfg, base_dir=tmp_path)
+    assert report.ready is False
+    assert report.issues
+    assert "Labeled Parquet not found" in report.issues[0]

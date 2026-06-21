@@ -1,0 +1,10 @@
+# Overlay: logistic + balanced class weights (merge onto rklb_baseline.yaml)
+
+train:
+  experiment_name: preset_logistic_balanced
+  notes: "ML expansion Phase E preset — class_weight balanced"
+  export_predictions: val
+
+model:
+  type: logistic_regression
+  class_weight: balanced

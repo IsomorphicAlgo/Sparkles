@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from sparkles.config.schema import ExperimentConfig
+from sparkles.models.evaluation import per_class_rows
 from sparkles.data.ingest import parquet_cache_path
 from sparkles.labels.triple_barrier import labeled_parquet_path
 
@@ -58,6 +59,11 @@ def _format_yaml_parameters(cfg: ExperimentConfig) -> list[str]:
         f"session={li.session_start_local!r}..{li.session_end_local!r}",
     )
 
+    out.append(
+        "  preprocess: "
+        f"scaler={cfg.preprocess.scaler}",
+    )
+
     mc = cfg.model
     out.append(
         "  model: "
@@ -78,7 +84,7 @@ def _format_yaml_parameters(cfg: ExperimentConfig) -> list[str]:
 
 
 def _format_metrics_block(m: dict[str, Any]) -> list[str]:
-    """Metrics.json headline + classes + stored feature flags (if present)."""
+    """Metrics.json headline + F1 + per-class val summary + stored feature flags."""
     lines: list[str] = []
     mt = m.get("model_type")
     if mt is not None:
@@ -90,6 +96,27 @@ def _format_metrics_block(m: dict[str, Any]) -> list[str]:
         f"train_acc={m.get('train_accuracy')}  val_acc={m.get('val_accuracy')}  "
         f"train_n={m.get('train_n')}  val_n={m.get('val_n')}",
     )
+    if m.get("preprocess_scaler") is not None:
+        lines.append(f"  preprocess_scaler (stored): {m.get('preprocess_scaler')}")
+    if m.get("val_f1_macro") is not None:
+        lines.append(
+            "  f1: "
+            f"val_macro={m.get('val_f1_macro')}  val_weighted={m.get('val_f1_weighted')}  "
+            f"train_macro={m.get('train_f1_macro')}  train_weighted={m.get('train_f1_weighted')}",
+        )
+    report = m.get("classification_report_val")
+    if isinstance(report, dict):
+        rows = per_class_rows(report)
+        if rows:
+            lines.append("  val per-class (f1 / support):")
+            for row in rows:
+                lines.append(
+                    f"    {row['class']}: "
+                    f"f1={row['f1']:.3f}  "
+                    f"precision={row['precision']:.3f}  "
+                    f"recall={row['recall']:.3f}  "
+                    f"support={row['support']}",
+                )
     classes = m.get("classes")
     if isinstance(classes, list) and classes:
         lines.append(f"  classes: {_json_compact(classes)}")
@@ -116,6 +143,7 @@ def _format_experiment_row(row: dict[str, Any]) -> str:
     parts = [
         f"  {rid}",
         f"val_acc={va}",
+        f"val_f1_macro={row.get('val_f1_macro', '?')}",
         f"model={mt}/{ms}",
         f"class_weight={cw!r}",
     ]

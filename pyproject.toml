@@ -31,6 +31,11 @@ dev = [
 ml = [
     "xgboost>=2.0",
 ]
+notebook = [
+    "jupyter>=1.0",
+    "matplotlib>=3.7",
+    "ipykernel>=6.0",
+]
 
 [project.scripts]
 sparkles = "sparkles.cli:main"
@@ -61,6 +66,7 @@ module = [
     "sklearn.linear_model",
     "sklearn.metrics",
     "sklearn.preprocessing",
+    "sklearn.pipeline",
     "sklearn.utils.class_weight",
 ]
 ignore_missing_imports = true

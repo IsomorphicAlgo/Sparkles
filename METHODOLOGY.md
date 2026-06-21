@@ -187,9 +187,14 @@ sparkles risk day-trades -c configs/experiments/rklb_baseline.yaml --as-of 2026-
 ```bash
 sparkles train -c configs/experiments/rklb_baseline.yaml
 sparkles train -c configs/experiments/rklb_baseline.yaml -v
+sparkles train -c configs/experiments/rklb_baseline.yaml --dry-run
 ```
 
-On success, the CLI prints the **artifact directory**, **`model_type`**, train/val accuracy, and row counts.
+**Dry-run (`--dry-run`):** prints train/val row counts, class balance per split, enabled feature groups, and column names **without** fitting or writing artifacts. Use before a long train or when debugging splits.
+
+**Batch presets:** `python scripts/run_trials.py --dry-run` then `python scripts/run_trials.py` — merges each file under **`configs/experiments/presets/`** onto **`rklb_baseline.yaml`**, trains each, exports **`artifacts/training_log.csv`**. See **`configs/experiments/presets/README.md`**.
+
+On success, the CLI prints the **artifact directory**, **`model_type`**, train/val **accuracy**, **val macro/weighted F1**, and row counts.
 
 **Training log (CSV):** flatten **`experiments.jsonl`** for spreadsheets (default: rows for the YAML symbol only; use **`--all-symbols`** for the entire log):
 
@@ -218,7 +223,7 @@ sparkles journal compare -c configs/experiments/rklb_baseline.yaml --split val
 - Whether **ingest** and **labeled** Parquet paths exist (and resolved paths).
 - **Parameters from the current YAML** — splits, labeling knobs, ingest throttling headline, **`model:`**, **`train:`**, and compact **`features:`** JSON.
 - **Latest training run** (or the run given by **`--run <run_id>`**): headline **`metrics.json`** lines including **`model_type`**, accuracies, **`classes`**, and the **`features`** dict **as stored at train time** (useful if you edited YAML after training).
-- **Tail of `experiments.jsonl`** for that symbol — each line includes run id, val accuracy, model type/solver (or XGBoost marker), class weight, feature flags, optional experiment name/notes.
+- **Tail of `experiments.jsonl`** for that symbol — each line includes run id, val accuracy, **val_f1_macro**, model type/solver (or XGBoost marker), class weight, feature flags, optional experiment name/notes.
 
 ```bash
 sparkles report -c configs/experiments/rklb_baseline.yaml
@@ -259,7 +264,7 @@ These are practical reminders aligned with what Sparkles is trying to achieve: *
 
 - **Trust the time split, not random shuffles.** Train and validation are separated by **calendar session dates** in the exchange timezone. Do not evaluate with a random row split on the same file; it will overstate quality on sequential market data.
 
-- **Watch class balance.** Triple-barrier outcomes are often **imbalanced**. Use **`report`** and **`metrics.json`** (and outcome counts from **`label`**) to see whether accuracy is meaningful. YAML **`model.class_weight`** helps logistic regression; for **XGBoost**, the same setting is translated into **per-row sample weights** on fit.
+- **Watch class balance.** Triple-barrier outcomes are often **imbalanced**. Prefer **`val_f1_macro`** in **`metrics.json`** and **`training_log.csv`** over accuracy alone; use **`sparkles report`** for per-class val F1/support. Outcome counts from **`label`** show label skew. YAML **`model.class_weight`** helps logistic regression; for **XGBoost**, the same setting is translated into **per-row sample weights** on fit.
 
 - **YAML vs artifacts.** After you train, **`metrics.json`** and **`experiments.jsonl`** record **`model_type`** and **`features`** as they were **at train time**. **`report`** shows both the **current YAML** and the **stored metrics** so you can spot drift (e.g. you changed `features:` but did not retrain).
 
@@ -299,7 +304,7 @@ After **`sparkles train`**, each run writes **`metrics.json`** under:
 
 (The CLI prints the resolved **`run_id`** folder path when training finishes.)
 
-Inside that JSON, the key **`classification_report_val`** holds the **validation** split report from scikit-learn: for each **`barrier_outcome`** class seen in the encoder, **`precision`**, **`recall`**, **`f1-score`**, and **`support`** (row count). It also includes **`accuracy`**, **`macro avg`**, and **`weighted avg`** over classes.
+Inside that JSON, top-level keys **`val_f1_macro`** and **`val_f1_weighted`** summarize validation performance for imbalanced classes. **`classification_report_val`** holds the full scikit-learn report: per **`barrier_outcome`** class, **`precision`**, **`recall`**, **`f1-score`**, and **`support`** (row count), plus **`macro avg`** and **`weighted avg`**.
 
 **Ways to view it:**
 

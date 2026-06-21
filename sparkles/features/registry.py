@@ -14,13 +14,21 @@ from sparkles.features.builders import (
     build_log1p_volume,
     build_log_entry_close,
 )
+from sparkles.features.intraday import (
+    build_range_vol_multi,
+    build_realized_vol_multi,
+    build_returns_multi_horizon,
+)
 
-# Stable column order for default all-on configs (matches pre–Phase B).
+# Stable column order for default all-on configs (matches pre–Phase B + G1 append).
 _FEATURE_ORDER: Sequence[tuple[str, Callable[[EntryFeatureContext], pd.DataFrame]]] = (
     ("log_entry_close", build_log_entry_close),
     ("label_geometry", build_label_geometry),
     ("intraday_range_pct", build_intraday_range_pct),
     ("log1p_volume", build_log1p_volume),
+    ("returns_multi_horizon", build_returns_multi_horizon),
+    ("realized_vol_multi", build_realized_vol_multi),
+    ("range_vol_multi", build_range_vol_multi),
 )
 
 

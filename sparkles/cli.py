@@ -17,7 +17,7 @@ from sparkles.config import load_experiment_config
 from sparkles.data.ingest import run_ingest
 from sparkles.journal.compare import run_journal_compare
 from sparkles.labels.triple_barrier import run_label
-from sparkles.models.train import run_train
+from sparkles.models.train import dry_run_train, format_dry_run_report, run_train
 from sparkles.reporting.summary import run_phase1_report
 from sparkles.risk.day_trade_ledger import DayTradeLedger
 from sparkles.tracking.experiments_csv import (
@@ -194,6 +194,11 @@ def train(
         dir_okay=False,
         help="Experiment YAML",
     ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Print row counts, class balance, and feature list; do not fit or save",
+    ),
     verbose: bool = typer.Option(
         False,
         "--verbose",
@@ -208,6 +213,12 @@ def train(
     )
     cfg_path = _resolve_config(config)
     cfg = load_experiment_config(cfg_path)
+    if dry_run:
+        report = dry_run_train(cfg)
+        typer.echo(format_dry_run_report(report))
+        if not report.ready:
+            raise typer.Exit(code=1)
+        return
     try:
         out = run_train(cfg)
     except (FileNotFoundError, ValueError, KeyError) as e:
@@ -221,6 +232,8 @@ def train(
             f"model_type={m.get('model_type', '?')}  "
             f"train_accuracy={m['train_accuracy']:.4f}  "
             f"val_accuracy={m['val_accuracy']:.4f}  "
+            f"val_f1_macro={m.get('val_f1_macro', 0.0):.4f}  "
+            f"val_f1_weighted={m.get('val_f1_weighted', 0.0):.4f}  "
             f"train_n={m['train_n']}  val_n={m['val_n']}",
         )
 

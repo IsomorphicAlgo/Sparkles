@@ -1,0 +1,12 @@
+# Overlay: shallow XGBoost (merge onto rklb_baseline.yaml; requires [ml] extra)
+
+train:
+  experiment_name: preset_xgb_shallow
+  notes: "ML expansion Phase E preset — xgb max_depth=3, n_estimators=80"
+  export_predictions: val
+
+model:
+  type: xgboost_classifier
+  xgb_n_estimators: 80
+  xgb_max_depth: 3
+  xgb_learning_rate: 0.1

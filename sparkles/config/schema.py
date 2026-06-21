@@ -142,6 +142,59 @@ class FeatureConfig(BaseModel):
         default=True,
         description="log1p(volume) on the entry bar",
     )
+    returns_multi_horizon: bool = Field(
+        default=False,
+        description="Trailing log returns over returns_horizons_bars 1m bars",
+    )
+    returns_horizons_bars: list[int] = Field(
+        default_factory=lambda: [5, 15, 30, 60],
+        description="Lookback bar counts for returns_multi_horizon columns",
+    )
+    realized_vol_multi: bool = Field(
+        default=False,
+        description="Trailing 1m realized vol (std of log returns) per window",
+    )
+    realized_vol_windows_bars: list[int] = Field(
+        default_factory=lambda: [30, 120],
+        description="Window lengths for realized_vol_multi columns",
+    )
+    realized_vol_include_ratio: bool = Field(
+        default=True,
+        description="When >=2 windows, add short/long rv ratio column",
+    )
+    range_vol_multi: bool = Field(
+        default=False,
+        description="Parkinson range vol and optional normalized ATR",
+    )
+    range_vol_window_bars: int = Field(
+        default=30,
+        ge=2,
+        description="Rolling window for range_vol_multi",
+    )
+    range_vol_include_atr_norm: bool = Field(
+        default=True,
+        description="Include atr_norm_{window}m when range_vol_multi is on",
+    )
+
+    @field_validator("returns_horizons_bars")
+    @classmethod
+    def _returns_horizons_positive(cls, v: list[int]) -> list[int]:
+        if not v:
+            raise ValueError("features.returns_horizons_bars must not be empty")
+        if any(h < 1 for h in v):
+            raise ValueError("features.returns_horizons_bars: each value must be >= 1")
+        return sorted(set(v))
+
+    @field_validator("realized_vol_windows_bars")
+    @classmethod
+    def _realized_vol_windows_valid(cls, v: list[int]) -> list[int]:
+        if not v:
+            raise ValueError("features.realized_vol_windows_bars must not be empty")
+        if any(w < 2 for w in v):
+            raise ValueError(
+                "features.realized_vol_windows_bars: each value must be >= 2",
+            )
+        return sorted(set(v))
 
     @model_validator(mode="after")
     def at_least_one_group(self) -> FeatureConfig:
@@ -151,13 +204,31 @@ class FeatureConfig(BaseModel):
                 self.label_geometry,
                 self.intraday_range_pct,
                 self.log1p_volume,
+                self.returns_multi_horizon,
+                self.realized_vol_multi,
+                self.range_vol_multi,
             ),
         ):
             raise ValueError(
-                "features: enable at least one of log_entry_close, label_geometry, "
-                "intraday_range_pct, log1p_volume",
+                "features: enable at least one feature group "
+                "(log_entry_close, label_geometry, intraday_range_pct, log1p_volume, "
+                "returns_multi_horizon, realized_vol_multi, range_vol_multi)",
             )
         return self
+
+
+class PreprocessConfig(BaseModel):
+    """Feature scaling before the classifier (ML expansion Phase D)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    scaler: Literal["none", "standard", "robust"] = Field(
+        default="none",
+        description=(
+            "Fit scaler on train rows only inside a sklearn Pipeline: "
+            "none | standard (StandardScaler) | robust (RobustScaler)"
+        ),
+    )
 
 
 class TrainConfig(BaseModel):
@@ -403,6 +474,7 @@ class ExperimentConfig(BaseModel):
     val_end: date | None = None
 
     model: ModelConfig = Field(default_factory=lambda: ModelConfig())
+    preprocess: PreprocessConfig = Field(default_factory=lambda: PreprocessConfig())
     train: TrainConfig = Field(default_factory=lambda: TrainConfig())
     features: FeatureConfig = Field(default_factory=lambda: FeatureConfig())
     journal: JournalConfig = Field(default_factory=lambda: JournalConfig())

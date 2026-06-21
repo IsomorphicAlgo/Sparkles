@@ -30,9 +30,33 @@ def test_run_phase1_report_shows_latest_metrics(tmp_path: Path) -> None:
         "model_type": "logistic_regression",
         "train_accuracy": 0.5,
         "val_accuracy": 0.4,
+        "val_f1_macro": 0.35,
+        "val_f1_weighted": 0.42,
+        "train_f1_macro": 0.5,
+        "train_f1_weighted": 0.5,
         "train_n": 10,
         "val_n": 5,
         "classes": ["take_profit", "stop_loss"],
+        "classification_report_val": {
+            "take_profit": {
+                "precision": 0.0,
+                "recall": 0.0,
+                "f1-score": 0.0,
+                "support": 1.0,
+            },
+            "stop_loss": {
+                "precision": 0.5,
+                "recall": 1.0,
+                "f1-score": 0.667,
+                "support": 4.0,
+            },
+            "macro avg": {
+                "precision": 0.25,
+                "recall": 0.5,
+                "f1-score": 0.35,
+                "support": 5.0,
+            },
+        },
         "features": {
             "log_entry_close": True,
             "label_geometry": True,
@@ -47,6 +71,9 @@ def test_run_phase1_report_shows_latest_metrics(tmp_path: Path) -> None:
     text = run_phase1_report(cfg, base_dir=tmp_path)
     assert "20990101T000000_000000Z" in text
     assert "val_acc=0.4" in text or "val_acc=0.4 " in text
+    assert "val_macro=0.35" in text
+    assert "val per-class (f1 / support):" in text
+    assert "stop_loss:" in text
     assert "train_n=10" in text
     assert "parameters (current experiment YAML)" in text
     assert "splits: train=2024-01-02..2024-03-01" in text
@@ -87,6 +114,7 @@ def test_run_phase1_report_experiments_tail_shows_model_and_features(
         "symbol": "AB",
         "run_id": "run_x",
         "val_accuracy": 0.8,
+        "val_f1_macro": 0.75,
         "model_type": "logistic_regression",
         "model_solver": "saga",
         "model_class_weight": None,
@@ -98,6 +126,7 @@ def test_run_phase1_report_experiments_tail_shows_model_and_features(
     text = run_phase1_report(cfg, base_dir=tmp_path)
     assert "run_x" in text
     assert "model=logistic_regression/saga" in text
+    assert "val_f1_macro=0.75" in text
     assert "experiment_name='smoke'" in text
 
 

@@ -63,7 +63,17 @@ def export_experiments_to_csv(
         return 0
 
     df = pd.DataFrame(rows)
-    priority = ["logged_at_utc", "run_id", "symbol", "val_accuracy"]
+    priority = [
+        "logged_at_utc",
+        "run_id",
+        "symbol",
+        "train_experiment_name",
+        "val_f1_macro",
+        "val_f1_weighted",
+        "val_accuracy",
+        "train_f1_macro",
+        "train_accuracy",
+    ]
     first = [c for c in priority if c in df.columns]
     rest = sorted(c for c in df.columns if c not in first)
     df = df[first + rest]

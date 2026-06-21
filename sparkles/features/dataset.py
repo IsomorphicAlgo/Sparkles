@@ -2,16 +2,23 @@
 
 Features use only information available **at the entry bar** (same timestamp as
 ``entry_time``): label-side barrier geometry and vol, plus that bar's OHLCV.
+Trailing-window groups (Phase G1) read the full 1m series up to each entry bar.
 """
 
 from __future__ import annotations
 
+import logging
+
+import numpy as np
 import pandas as pd
 
 from sparkles.config.schema import ExperimentConfig, FeatureConfig
 from sparkles.features.builders import EntryFeatureContext
+from sparkles.features.intraday import max_warmup_bars
 from sparkles.features.registry import assemble_feature_columns
 from sparkles.features.volatility import ensure_exchange_tz_index
+
+logger = logging.getLogger(__name__)
 
 
 def entry_session_dates(
@@ -42,9 +49,17 @@ def _required_label_columns(fc: FeatureConfig) -> set[str]:
 
 def _required_ohlcv_columns(fc: FeatureConfig) -> set[str]:
     need: set[str] = {"close"}
-    if fc.intraday_range_pct:
+    if fc.intraday_range_pct or fc.range_vol_multi:
         need.update({"high", "low"})
+    if fc.returns_multi_horizon or fc.realized_vol_multi:
+        need.add("close")
     return need
+
+
+def _needs_full_ohlcv_history(fc: FeatureConfig) -> bool:
+    return bool(
+        fc.returns_multi_horizon or fc.realized_vol_multi or fc.range_vol_multi,
+    )
 
 
 def build_feature_matrix(
@@ -55,6 +70,7 @@ def build_feature_matrix(
     """Return ``(X, y)`` aligned to labeled rows with matching OHLCV index.
 
     Drops label rows whose ``entry_time`` is missing from ``ohlcv``.
+    Drops rows with NaN in any feature column (warm-up for trailing windows).
     """
     if labels.empty:
         raise ValueError("labels DataFrame is empty")
@@ -69,21 +85,62 @@ def build_feature_matrix(
     if miss_o:
         raise KeyError(f"ohlcv missing columns for enabled features: {sorted(miss_o)}")
 
-    aligned = ohlcv.reindex(labels.index)
-    bad = aligned["close"].isna()
+    positions = pd.Series(
+        ohlcv.index.get_indexer(labels.index),
+        index=labels.index,
+        dtype=np.int64,
+    )
+    bad = positions.to_numpy(dtype=np.int64, copy=False) < 0
     if bool(bad.all()):
         raise ValueError("No label timestamps match ohlcv index")
     if bool(bad.any()):
-        labels = labels.loc[~bad]
-        aligned = aligned.loc[~bad]
+        keep = ~bad
+        labels = labels.loc[keep]
+        positions = positions.loc[keep]
+
+    aligned = ohlcv.reindex(labels.index)
+    if aligned["close"].isna().any():
+        ok = aligned["close"].notna()
+        labels = labels.loc[ok]
+        aligned = aligned.loc[ok]
+        positions = positions.loc[ok]
+
+    warmup = max_warmup_bars(fc) if _needs_full_ohlcv_history(fc) else 0
+    if warmup > 0:
+        warm_ok = positions >= warmup
+        dropped_warmup = int((~warm_ok).sum())
+        if dropped_warmup:
+            logger.info(
+                "Dropping %s label rows before trailing-window warm-up (%s bars)",
+                dropped_warmup,
+                warmup,
+            )
+        labels = labels.loc[warm_ok]
+        aligned = aligned.loc[warm_ok]
+        positions = positions.loc[warm_ok]
 
     ctx = EntryFeatureContext(
         labels=labels,
         aligned_ohlcv=aligned,
         entry_close=labels["entry_close"],
+        full_ohlcv=ohlcv,
+        entry_positions=positions,
+        feature_config=fc,
     )
     X = assemble_feature_columns(ctx, fc)
     y = labels["barrier_outcome"].astype(str).copy()
+
+    nan_rows = X.isna().any(axis=1)
+    if bool(nan_rows.any()):
+        n_nan = int(nan_rows.sum())
+        logger.info(
+            "Dropping %s label rows with NaN feature values after assembly",
+            n_nan,
+        )
+        keep = ~nan_rows
+        X = X.loc[keep]
+        y = y.loc[keep]
+
     return X, y
 
 
