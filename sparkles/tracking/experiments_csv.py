@@ -68,11 +68,15 @@ def export_experiments_to_csv(
         "run_id",
         "symbol",
         "train_experiment_name",
+        "label_entry_stride",
         "val_f1_macro",
         "val_f1_weighted",
         "val_accuracy",
-        "train_f1_macro",
         "train_accuracy",
+        "train_f1_macro",
+        "train_f1_weighted",
+        "train_n",
+        "val_n",
     ]
     first = [c for c in priority if c in df.columns]
     rest = sorted(c for c in df.columns if c not in first)

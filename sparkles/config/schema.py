@@ -432,6 +432,24 @@ class ExperimentConfig(BaseModel):
         ge=1,
         description="Use every Nth bar as entry (390 ≈ one per 1m trading day)",
     )
+    label_cache_suffix: str | None = Field(
+        default=None,
+        description=(
+            "Optional tag in labeled Parquet filename when barrier presets differ "
+            "but symbol, data span, and stride match (e.g. dt_v2)"
+        ),
+    )
+
+    @field_validator("label_cache_suffix")
+    @classmethod
+    def _label_cache_suffix_safe(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", v):
+            raise ValueError(
+                "label_cache_suffix: use letters, digits, underscore, hyphen only",
+            )
+        return v
 
     max_day_trades: int = Field(default=3, ge=1, le=3)
     rolling_business_days: int = Field(default=5, ge=1)

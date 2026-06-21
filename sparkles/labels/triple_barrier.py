@@ -185,9 +185,11 @@ def labeled_parquet_path(cfg: ExperimentConfig, base_dir: Path | None = None) ->
     cache.mkdir(parents=True, exist_ok=True)
     name = (
         f"{cfg.symbol.upper()}_labeled_{cfg.data_start.isoformat()}_"
-        f"{cfg.data_end.isoformat()}_s{cfg.label_entry_stride}.parquet"
+        f"{cfg.data_end.isoformat()}_s{cfg.label_entry_stride}"
     )
-    return cache / name
+    if cfg.label_cache_suffix:
+        name += f"_{cfg.label_cache_suffix}"
+    return cache / f"{name}.parquet"
 
 
 def run_label(

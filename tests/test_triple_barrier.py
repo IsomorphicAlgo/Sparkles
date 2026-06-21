@@ -115,6 +115,12 @@ def test_labeled_parquet_path_includes_stride(tmp_path) -> None:
     assert "_s390.parquet" in p.name
 
 
+def test_labeled_parquet_path_includes_cache_suffix(tmp_path) -> None:
+    cfg = _cfg(label_entry_stride=15, label_cache_suffix="dt_v2")
+    p = labeled_parquet_path(cfg, base_dir=tmp_path)
+    assert p.name.endswith("_s15_dt_v2.parquet")
+
+
 def test_run_label_roundtrip(tmp_path) -> None:
     tz = "America/New_York"
     idx = pd.date_range("2024-01-02 09:30", periods=3, freq="1min", tz=tz)

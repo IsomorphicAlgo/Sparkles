@@ -388,10 +388,12 @@ def run_train(
         "train_n": metrics["train_n"],
         "val_n": metrics["val_n"],
         "val_accuracy": metrics["val_accuracy"],
+        "train_accuracy": metrics["train_accuracy"],
         "val_f1_macro": metrics["val_f1_macro"],
         "val_f1_weighted": metrics["val_f1_weighted"],
         "train_f1_macro": metrics["train_f1_macro"],
         "train_f1_weighted": metrics["train_f1_weighted"],
+        "label_entry_stride": cfg.label_entry_stride,
         "model_type": cfg.model.type,
         "model_solver": cfg.model.solver
         if cfg.model.type == "logistic_regression"

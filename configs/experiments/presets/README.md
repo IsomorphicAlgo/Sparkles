@@ -35,10 +35,13 @@ sparkles train -c configs/experiments/rklb_baseline.yaml --dry-run
 **Day-trade experiment (new labels):**
 
 ```bash
-sparkles label -c configs/experiments/rklb_daytrade_v1.yaml
-sparkles train -c configs/experiments/rklb_daytrade_v1.yaml --dry-run
-python scripts/run_trials.py --base configs/experiments/rklb_daytrade_v1.yaml --preset configs/experiments/presets/rklb_daytrade_g1_v1.yaml
+# v2 — intraday barriers (recommended after v1 vertical-only collapse)
+sparkles label -c configs/experiments/rklb_daytrade_v2.yaml
+sparkles train -c configs/experiments/rklb_daytrade_v2.yaml --dry-run
+python scripts/run_trials.py --base configs/experiments/rklb_daytrade_v2.yaml --preset configs/experiments/presets/rklb_daytrade_v2_g1.yaml
 ```
+
+v1 (15%/10% barriers) → `…_s15.parquet`; v2 → `…_s15_dt_v2.parquet` (does not overwrite v1).
 
 **Train G1 preset:**
 

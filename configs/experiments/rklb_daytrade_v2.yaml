@@ -1,0 +1,69 @@
+# RKLB day-trade label experiment (v2) — intraday-scale barriers (3% TP / 5% SL).
+# Same ingest Parquet as baseline/v1. Distinct labeled cache via label_cache_suffix.
+#   sparkles label -c configs/experiments/rklb_daytrade_v2.yaml
+#   → data/cache/RKLB_labeled_2022-01-01_2026-03-30_s15_dt_v2.parquet
+# v1 used 15%/10%/12% min — metrics not comparable. v2 targets more TP/SL vs vertical.
+
+symbol: RKLB                              # Ticker for ingest, labels, and artifacts
+exchange_timezone: America/New_York       # Session date / wall clock for bars and splits
+
+cache_ttl_hours: 24                       # Reuse ingest Parquet if newer than this (hours)
+ingest_chunk_calendar_days: 10            # Days per TwelveData download chunk (API limits)
+ingest_sleep_seconds_between_chunks: 10   # Pause between chunks (free-tier credit safety)
+twelvedata_per_minute_credit_wait_seconds: 65  # Wait after "minute credits exhausted" errors
+
+data_start: 2022-01-01                    # First calendar day of 1m history to cache
+data_end: 2026-03-30                      # Last calendar day of 1m history to cache
+
+train_start: 2022-01-01                   # First session date used to fit the model
+train_end: 2026-01-01                     # Last session date in the train split
+val_start: 2026-01-02                     # First session date in held-out validation
+val_end: 2026-03-30                       # Last session date in held-out validation
+
+profit_barrier_base: 0.05                 # Base take-profit above entry (3%; vol-scaled)
+stop_loss_base: 0.02                      # Base stop below entry (5%; vol-scaled)
+min_profit_per_trade_pct: 0.015            # Floor: TP never closer than 5% above entry
+vol_lookback_trading_days: 20             # Trading days of daily returns for vol estimate
+vertical_max_trading_days: 1              # Max hold: vertical label after 1 session day
+vol_ref_method: median                    # "Normal vol" reference: median or mean of series
+label_entry_stride: 10                    # Label every Nth 1m bar as a candidate entry
+label_cache_suffix: dt_v2                 # Tag in labeled Parquet name (barrier preset id)
+
+max_day_trades: 3                       # PDT-style cap (future risk tools; not labeling)
+rolling_business_days: 5                  # Rolling window for day-trade cap above
+
+train:
+  experiment_name: rklb_daytrade_v2       # Name in experiments.jsonl / comparison CSV
+  notes: "Day-trade v2 — 3% TP / 5% SL / 5% min profit / 1-day vertical / stride 15"
+  export_predictions: val                 # val | all | none → predictions.parquet
+
+model:
+  type: xgboost_classifier                # logistic_regression | xgboost_classifier ([ml] extra)
+  random_seed: 42                         # Reproducible fit (same data → same trees)
+  class_weight: balanced                  # Up-weight rare barrier outcomes in training
+  xgb_max_depth: 3                        # Max tree depth (shallow = less overfit)
+  xgb_n_estimators: 60                    # Number of boosting rounds (trees)
+  xgb_learning_rate: 0.08                 # Shrinkage per tree (lower = slower learning)
+  xgb_subsample: 0.8                      # Row subsample ratio per tree
+  xgb_colsample_bytree: 0.8               # Column subsample ratio per tree
+
+preprocess:
+  scaler: none                            # none | standard | robust (train-only fit in Pipeline)
+
+features:
+  log_entry_close: true                   # log(entry_close) at label time
+  label_geometry: true                    # sigma, vol ratio, tp/sl distances at entry
+  intraday_range_pct: true                # (high − low) / close on entry bar
+  log1p_volume: true                      # log(1 + volume) on entry bar
+  returns_multi_horizon: false            # G1: trailing log returns (ret_{N}m columns)
+  returns_horizons_bars: [5, 15, 30, 60]  # G1: bar lookbacks when returns_multi_horizon true
+  realized_vol_multi: false               # G1: trailing std of 1m log returns (rv_{N}m)
+  realized_vol_windows_bars: [30, 120]      # G1: RV window lengths in 1m bars
+  realized_vol_include_ratio: true        # G1: add short/long RV ratio column
+  range_vol_multi: false                  # G1: Parkinson range vol + optional ATR norm
+  range_vol_window_bars: 30               # G1: rolling window for range/ATR features
+  range_vol_include_atr_norm: true        # G1: include atr_norm_{window}m when range on
+
+paths:
+  cache_dir: data/cache                   # Ingest + labeled Parquet directory
+  artifacts_dir: artifacts                # Train runs, metrics.json, model bundles

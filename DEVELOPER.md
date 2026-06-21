@@ -21,6 +21,7 @@ Quick reference for **where to change what** in Phase 1. Conceptual methodology:
 
 - **File:** `configs/experiments/rklb_baseline.yaml` (or your own copy under `configs/experiments/`)
 - **Day-trade labels (v1):** `configs/experiments/rklb_daytrade_v1.yaml` — 15% TP / 10% SL / 12% min profit / **`vertical_max_trading_days: 1`** / **`label_entry_stride: 15`**. Same ingest Parquet as baseline; **must re-label** → `…_labeled_…_s15.parquet`. Metrics **not comparable** to baseline champion. Optional G1 preset: **`presets/rklb_daytrade_g1_v1.yaml`**.
+- **Day-trade labels (v2):** `configs/experiments/rklb_daytrade_v2.yaml` — **3% TP / 5% SL / 1.5% min profit** / 1-day vertical / stride 15; labeled cache **`…_s15_dt_v2.parquet`** via **`label_cache_suffix`**. Preset **`presets/rklb_daytrade_v2_g1.yaml`**.
 - **Field:** `symbol` (default **RKLB**)
 - **CLI:** pass `--config path/to/experiment.yaml` to `sparkles` subcommands
 
