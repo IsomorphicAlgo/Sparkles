@@ -30,6 +30,15 @@ sparkles train -c configs/experiments/rklb_baseline.yaml --dry-run
 | `xgb_deep.yaml` | XGBoost, deeper + slower learning rate |
 | **`xgb_d3_reg_v1.yaml`** | **Champion** (2026-06-20): depth 3, lr 0.08, n_estimators 60, subsample/colsample 0.8 — best val F1 so far |
 | **`g1_features_v1.yaml`** | **Phase G1** features + champion XGB hyperparams — A/B vs baseline |
+| **`rklb_daytrade_g1_v1.yaml`** | G1 on **`rklb_daytrade_v1.yaml`** (day-trade labels; label first) |
+
+**Day-trade experiment (new labels):**
+
+```bash
+sparkles label -c configs/experiments/rklb_daytrade_v1.yaml
+sparkles train -c configs/experiments/rklb_daytrade_v1.yaml --dry-run
+python scripts/run_trials.py --base configs/experiments/rklb_daytrade_v1.yaml --preset configs/experiments/presets/rklb_daytrade_g1_v1.yaml
+```
 
 **Train G1 preset:**
 

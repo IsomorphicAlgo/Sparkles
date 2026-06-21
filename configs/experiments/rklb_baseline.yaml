@@ -86,11 +86,11 @@ features:
   returns_multi_horizon: false
   returns_horizons_bars: [5, 15, 30, 60]
   realized_vol_multi: false
-  # realized_vol_windows_bars: [30, 120]
-  # realized_vol_include_ratio: true
-  # range_vol_multi: false
-  # range_vol_window_bars: 30
-  # range_vol_include_atr_norm: true
+  realized_vol_windows_bars: [30, 120]
+  realized_vol_include_ratio: true
+  range_vol_multi: false
+  range_vol_window_bars: 30
+  range_vol_include_atr_norm: true
 
 paths:
   cache_dir: data/cache

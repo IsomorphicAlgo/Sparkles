@@ -1,0 +1,17 @@
+# Overlay: day-trade labels + G1 intraday features (merge onto rklb_daytrade_v1.yaml)
+# Prerequisite: sparkles label -c configs/experiments/rklb_daytrade_v1.yaml
+
+train:
+  experiment_name: rklb_daytrade_g1_v1
+  notes: "Day-trade v1 labels + G1 returns/RV/range (finer windows for intraday)"
+  export_predictions: val
+
+features:
+  returns_multi_horizon: true
+  returns_horizons_bars: [3, 5, 10, 15, 30]
+  realized_vol_multi: true
+  realized_vol_windows_bars: [5, 15, 30]
+  realized_vol_include_ratio: true
+  range_vol_multi: true
+  range_vol_window_bars: 15
+  range_vol_include_atr_norm: true

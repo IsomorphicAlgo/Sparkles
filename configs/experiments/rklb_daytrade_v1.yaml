@@ -1,0 +1,69 @@
+# RKLB day-trade label experiment (v1) — tighter barriers, same-session vertical, denser stride.
+# Ingest reuses the same OHLCV Parquet as rklb_baseline.yaml (symbol + data_start/data_end).
+# Labels are NEW: run `sparkles label -c configs/experiments/rklb_daytrade_v1.yaml`
+#   → data/cache/RKLB_labeled_2022-01-01_2026-03-30_s15.parquet
+# Do not compare metrics to rklb_baseline / xgb_d3_reg_v1 (different y and label geometry).
+
+symbol: RKLB
+exchange_timezone: America/New_York
+
+cache_ttl_hours: 24
+ingest_chunk_calendar_days: 10
+ingest_sleep_seconds_between_chunks: 10
+twelvedata_per_minute_credit_wait_seconds: 65
+
+data_start: 2022-01-01
+data_end: 2026-03-30
+
+train_start: 2022-01-01
+train_end: 2026-01-01
+val_start: 2026-01-02
+val_end: 2026-03-30
+
+# --- Day-trade triple barrier (vs rklb_baseline: 20% TP / 15% SL / 30-day vertical / stride 30) ---
+profit_barrier_base: 0.15
+stop_loss_base: 0.10
+min_profit_per_trade_pct: 0.12
+vol_lookback_trading_days: 20
+vertical_max_trading_days: 1
+vol_ref_method: median
+label_entry_stride: 15
+
+max_day_trades: 3
+rolling_business_days: 5
+
+train:
+  experiment_name: rklb_daytrade_v1
+  notes: "Day-trade labels — 15% TP / 10% SL / 12% min profit / 1-day vertical / stride 15"
+  export_predictions: val
+
+model:
+  type: xgboost_classifier
+  random_seed: 42
+  class_weight: balanced
+  xgb_max_depth: 3
+  xgb_n_estimators: 60
+  xgb_learning_rate: 0.08
+  xgb_subsample: 0.8
+  xgb_colsample_bytree: 0.8
+
+preprocess:
+  scaler: none
+
+features:
+  log_entry_close: true
+  label_geometry: true
+  intraday_range_pct: true
+  log1p_volume: true
+  returns_multi_horizon: false
+  returns_horizons_bars: [5, 15, 30, 60]
+  realized_vol_multi: false
+  realized_vol_windows_bars: [30, 120]
+  realized_vol_include_ratio: true
+  range_vol_multi: false
+  range_vol_window_bars: 30
+  range_vol_include_atr_norm: true
+
+paths:
+  cache_dir: data/cache
+  artifacts_dir: artifacts
