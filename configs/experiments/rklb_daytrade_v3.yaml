@@ -1,0 +1,97 @@
+# RKLB day-trade experiment v3 — frozen baseline after full XGB grid search.
+#
+# Labels/barriers: same as v2 (reuse labeled Parquet — label_cache_suffix dt_v2).
+# Model + feature knobs: grid-best val_f1_macro 0.5624 (15,360 combos, 7,680 trained ok)
+#   Grid run: artifacts/grid_search/20260622T232628_272233Z_grid_rklb_xgb/
+#   Winner:  artifacts/RKLB/20260623T032329_428232Z/
+#
+# Grid context: base rklb_daytrade_v2.yaml + preset rklb_daytrade_v2_g1.yaml (G1 horizons)
+#   + G2/G3 from v2 base. sample_weight_method: none (uniqueness combos failed in grid).
+#
+# Workflow:
+#   1. sparkles ingest -c configs/experiments/rklb_daytrade_v3.yaml   # extend data_end first if needed
+#   2. sparkles ingest -c … -s SPY -i 1min && sparkles ingest -c … -s VIXY -i 1day
+#   3. sparkles label -c configs/experiments/rklb_daytrade_v3.yaml    # skip if only model/features changed
+#   4. sparkles train -c configs/experiments/rklb_daytrade_v3.yaml --dry-run
+#   5. After new features (G4+): small re-grid → configs/experiments/grids/rklb_daytrade_xgb_v3_refit.yaml
+
+symbol: RKLB
+exchange_timezone: America/New_York
+
+cache_ttl_hours: 24
+ingest_chunk_calendar_days: 10
+ingest_sleep_seconds_between_chunks: 10
+twelvedata_per_minute_credit_wait_seconds: 65
+
+data_start: 2022-01-01
+data_end: 2026-03-30
+
+train_start: 2022-01-01
+train_end: 2026-01-01
+val_start: 2026-01-02
+val_end: 2026-03-30
+
+profit_barrier_base: 0.05
+stop_loss_base: 0.02
+min_profit_per_trade_pct: 0.015
+vol_lookback_trading_days: 20
+vertical_max_trading_days: 1
+vol_ref_method: median
+label_entry_stride: 10
+label_cache_suffix: dt_v2
+
+max_day_trades: 3
+rolling_business_days: 5
+
+train:
+  experiment_name: rklb_daytrade_v3
+  notes: "v3 grid-best — spy_ret_30m, depth 5, lr 0.03, n_est 127, subsample 0.6, colsample 0.8 (run 20260623T032329_428232Z)"
+  export_predictions: val
+  entry_threshold_take_profit: 0.35
+  sample_weight_method: none
+
+model:
+  type: xgboost_classifier
+  random_seed: 42
+  class_weight: balanced
+  xgb_max_depth: 5
+  xgb_n_estimators: 127
+  xgb_learning_rate: 0.03
+  xgb_subsample: 0.6
+  xgb_colsample_bytree: 0.8
+
+preprocess:
+  scaler: none
+
+features:
+  log_entry_close: true
+  label_geometry: true
+  intraday_range_pct: true
+  log1p_volume: true
+  returns_multi_horizon: true
+  returns_horizons_bars: [3, 5, 10, 15, 30]
+  realized_vol_multi: true
+  realized_vol_windows_bars: [5, 15, 30]
+  realized_vol_include_ratio: true
+  range_vol_multi: true
+  range_vol_window_bars: 15
+  range_vol_include_atr_norm: true
+  session_time: true
+  volume_context: true
+  volume_median_window_bars: 60
+  vwap_distance: true
+  bar_microstructure: true
+  market_context: true
+  market_spy_return_bars: 30
+
+context_ingest:
+  symbols:
+    - symbol: SPY
+      interval: 1min
+    - symbol: VIXY
+      interval: 1day
+      twelvedata_exchange: CBOE
+
+paths:
+  cache_dir: data/cache
+  artifacts_dir: artifacts

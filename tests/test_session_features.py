@@ -11,8 +11,14 @@ import pytest
 from sparkles.config.schema import FeatureConfig
 from sparkles.features.builders import EntryFeatureContext
 from sparkles.features.dataset import build_feature_matrix, feature_warmup_bars
-from sparkles.features.session import build_session_time, build_vwap_distance
+from sparkles.features.session import (
+    build_session_day_of_week,
+    build_session_time,
+    build_vwap_distance,
+)
 from tests.test_dataset import _cfg
+
+_TWO_PI = 2.0 * math.pi
 
 
 def _synthetic_session_ohlcv() -> pd.DataFrame:
@@ -143,3 +149,101 @@ def test_feature_warmup_includes_volume_window() -> None:
         volume_median_window_bars=45,
     )
     assert feature_warmup_bars(fc) == 45
+
+
+def test_session_day_of_week_monday_and_friday() -> None:
+    tz = "America/New_York"
+    mon = pd.Timestamp("2024-06-03 10:00", tz=tz)
+    fri = pd.Timestamp("2024-06-07 14:30", tz=tz)
+    labels = pd.DataFrame(
+        {
+            "entry_close": [100.0, 101.0],
+            "barrier_outcome": ["vertical", "vertical"],
+            "sigma_ann_at_entry": [0.5, 0.5],
+            "vol_scale_ratio": [1.0, 1.0],
+            "tp_move_effective": [0.1, 0.1],
+            "sl_move": [0.05, 0.05],
+        },
+        index=[mon, fri],
+    )
+    fc = FeatureConfig(
+        log_entry_close=False,
+        label_geometry=False,
+        intraday_range_pct=False,
+        log1p_volume=False,
+        session_day_of_week=True,
+    )
+    ctx = EntryFeatureContext(
+        labels=labels,
+        aligned_ohlcv=pd.DataFrame({"close": labels["entry_close"]}, index=labels.index),
+        entry_close=labels["entry_close"],
+        full_ohlcv=pd.DataFrame({"close": labels["entry_close"]}, index=labels.index),
+        entry_positions=pd.Series([0, 0], index=labels.index),
+        feature_config=fc,
+        exchange_timezone=tz,
+    )
+    X = build_session_day_of_week(ctx)
+    assert X.loc[mon, "sin_dow"] == pytest.approx(0.0, abs=1e-12)
+    assert X.loc[mon, "cos_dow"] == pytest.approx(1.0, abs=1e-12)
+    wd_frac = 4.0 / 5.0
+    assert X.loc[fri, "sin_dow"] == pytest.approx(math.sin(_TWO_PI * wd_frac), abs=1e-12)
+    assert X.loc[fri, "cos_dow"] == pytest.approx(math.cos(_TWO_PI * wd_frac), abs=1e-12)
+
+
+def test_session_day_of_week_weekend_raises() -> None:
+    tz = "America/New_York"
+    sat = pd.Timestamp("2024-06-08 10:00", tz=tz)
+    labels = pd.DataFrame(
+        {
+            "entry_close": [100.0],
+            "barrier_outcome": ["vertical"],
+            "sigma_ann_at_entry": [0.5],
+            "vol_scale_ratio": [1.0],
+            "tp_move_effective": [0.1],
+            "sl_move": [0.05],
+        },
+        index=[sat],
+    )
+    fc = FeatureConfig(
+        log_entry_close=False,
+        label_geometry=False,
+        intraday_range_pct=False,
+        log1p_volume=False,
+        session_day_of_week=True,
+    )
+    ctx = EntryFeatureContext(
+        labels=labels,
+        aligned_ohlcv=pd.DataFrame({"close": [100.0]}, index=labels.index),
+        entry_close=labels["entry_close"],
+        full_ohlcv=pd.DataFrame({"close": [100.0]}, index=labels.index),
+        entry_positions=pd.Series([0], index=labels.index),
+        feature_config=fc,
+        exchange_timezone=tz,
+    )
+    with pytest.raises(ValueError, match="weekend"):
+        build_session_day_of_week(ctx)
+
+
+def test_session_day_of_week_in_feature_matrix() -> None:
+    ohlcv = _synthetic_session_ohlcv()
+    labels = pd.DataFrame(
+        {
+            "entry_close": ohlcv["close"].iloc[[0, 60]],
+            "barrier_outcome": ["vertical", "vertical"],
+            "sigma_ann_at_entry": [0.5, 0.5],
+            "vol_scale_ratio": [1.0, 1.0],
+            "tp_move_effective": [0.1, 0.1],
+            "sl_move": [0.05, 0.05],
+        },
+        index=ohlcv.index[[0, 60]],
+    )
+    fc = FeatureConfig(
+        log_entry_close=False,
+        label_geometry=False,
+        intraday_range_pct=False,
+        log1p_volume=False,
+        session_day_of_week=True,
+    )
+    X, _y = build_feature_matrix(labels, ohlcv, _cfg(features=fc))
+    assert list(X.columns) == ["sin_dow", "cos_dow"]
+    assert not X.isna().any().any()

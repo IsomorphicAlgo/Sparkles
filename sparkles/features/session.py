@@ -56,6 +56,28 @@ def build_session_time(ctx: EntryFeatureContext) -> pd.DataFrame:
     )
 
 
+def build_session_day_of_week(ctx: EntryFeatureContext) -> pd.DataFrame:
+    """Cyclical weekday encoding from entry session date (exchange TZ)."""
+    ix = ensure_exchange_tz_index(pd.DatetimeIndex(ctx.labels.index), ctx.exchange_timezone)
+    weekday = pd.Series(ix.dayofweek, index=ctx.labels.index, dtype=np.int64)
+    if bool((weekday > 4).any()):
+        bad = sorted(weekday[weekday > 4].unique().tolist())
+        raise ValueError(
+            "session_day_of_week: entry timestamps fall on weekend "
+            f"(dayofweek {bad}; expected Mon–Fri 0–4)",
+        )
+    wd_frac = weekday.astype(np.float64) / 5.0
+    sin_dow = np.sin(_TWO_PI * wd_frac.to_numpy(dtype=float))
+    cos_dow = np.cos(_TWO_PI * wd_frac.to_numpy(dtype=float))
+    return pd.DataFrame(
+        {
+            "sin_dow": sin_dow,
+            "cos_dow": cos_dow,
+        },
+        index=ctx.labels.index,
+    )
+
+
 def build_volume_context(ctx: EntryFeatureContext) -> pd.DataFrame:
     fc = ctx.feature_config
     w = fc.volume_median_window_bars

@@ -1,0 +1,18 @@
+# G4a overlay: v3 + technical indicators (RSI / EMA / MACD)
+# A/B vs rklb_daytrade_v3.yaml — same model knobs, technical_indicators on.
+#
+#   python scripts/run_trials.py --base configs/experiments/rklb_daytrade_v3.yaml \
+#     --preset configs/experiments/presets/rklb_daytrade_v3_g4a.yaml
+
+train:
+  experiment_name: rklb_daytrade_v3_g4a
+  notes: "v3 + G4a technical indicators (EMA dist, RSI, MACD)"
+  export_predictions: val
+
+features:
+  technical_indicators: true
+  ema_windows_bars: [9, 21, 50]
+  rsi_window_bars: 14
+  macd_fast_bars: 12
+  macd_slow_bars: 26
+  macd_signal_bars: 9

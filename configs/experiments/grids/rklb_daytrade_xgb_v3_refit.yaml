@@ -1,0 +1,23 @@
+# Small re-tune grid after adding G4+ features on rklb_daytrade_v3.yaml.
+# Narrow ranges around v3 grid-best (val_f1_macro 0.5624, run 20260623T032329_428232Z).
+#
+#   python scripts/run_grid_search.py --grid configs/experiments/grids/rklb_daytrade_xgb_v3_refit.yaml
+
+grid_name: rklb_daytrade_xgb_v3_refit
+
+base: configs/experiments/rklb_daytrade_v3.yaml
+
+experiment_name_prefix: grid_v3_refit
+notes_prefix: "v3 refit after feature expansion"
+
+fixed:
+  train.export_predictions: none
+  train.sample_weight_method: none
+
+params:
+  model.xgb_n_estimators: [127, 255]
+  model.xgb_learning_rate: [0.02, 0.03, 0.04]
+  model.xgb_max_depth: [4, 5, 6]
+  model.xgb_subsample: [0.6, 0.7, 0.8]
+  model.xgb_colsample_bytree: [0.7, 0.8, 0.9]
+  features.market_spy_return_bars: [15, 30]

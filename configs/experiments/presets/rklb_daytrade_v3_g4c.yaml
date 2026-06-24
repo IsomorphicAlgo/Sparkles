@@ -1,0 +1,22 @@
+# G4c overlay: v3 + G4a + G4b + OHLCV order-flow proxies
+# A/B vs rklb_daytrade_v3_g4b.yaml — same model knobs, order_flow_proxies on.
+#
+#   python scripts/run_trials.py --base configs/experiments/rklb_daytrade_v3.yaml \
+#     --preset configs/experiments/presets/rklb_daytrade_v3_g4c.yaml
+
+train:
+  experiment_name: rklb_daytrade_v3_g4c
+  notes: "v3 + G4a/G4b + G4c OHLCV spread/illiquidity proxies (no L2)"
+  export_predictions: val
+
+features:
+  technical_indicators: true
+  ema_windows_bars: [9, 21, 50]
+  rsi_window_bars: 14
+  macd_fast_bars: 12
+  macd_slow_bars: 26
+  macd_signal_bars: 9
+  session_day_of_week: true
+  order_flow_proxies: true
+  roll_window_bars: 20
+  amihud_window_bars: 20

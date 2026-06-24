@@ -45,7 +45,19 @@ todos:
     content: "Phase I4: AFML sample weights (label uniqueness) ✅"
     status: complete
   - id: afml-advanced
-    content: "Phase I4b–c (optional): purged CV, fractional differentiation"
+    content: "Phase I4b–c (optional): purged CV; fractional diff moved to G4d"
+    status: pending
+  - id: feature-expansion-g4a
+    content: "Phase G4a: RSI / EMA / MACD technical indicators (entry-only)"
+    status: complete
+  - id: feature-expansion-g4b
+    content: "Phase G4b: Day-of-week cyclical embeddings (session_day_of_week)"
+    status: complete
+  - id: feature-expansion-g4c
+    content: "Phase G4c: Bid-ask / order-flow proxies (OHLCV-only)"
+    status: complete
+  - id: feature-expansion-g4d
+    content: "Phase G4d: Fractional differentiation (I4c) — stationary log-price memory"
     status: pending
 isProject: false
 ---
@@ -172,6 +184,164 @@ This file is the **living roadmap** for improving **models**, **hyperparameters*
 
 **Done when:** ✅ Microstructure needs no extra vendor data; **`market_context`** documents credit cost, cache paths, and validates SPY+VIX in YAML.
 
+### Phase G4+ — Technical, calendar, microstructure proxies, fractional memory (**planned**)
+
+**Context (2026-06-23):** **`rklb_daytrade_v3.yaml`** freezes grid-best model knobs (**val_f1_macro ~0.562**, run **`20260623T032329_428232Z`**) on G1+G2+G3. Next feature work should **extend v3** (same labels/barriers) and re-tune with **`configs/experiments/grids/rklb_daytrade_xgb_v3_refit.yaml`** — not another 15k-combo sweep until slices stabilize.
+
+**Contract (unchanged):** Entry-time only; trailing windows end at the entry bar; no `bars_forward` or post-entry fields in **`X`**.
+
+**Non-negotiable workflow (same as G1–G3 and Phase I):**
+
+1. **One slice per owner approval** (G4a → G4b → G4c → G4d). Do not start G4b until G4a is approved, etc.
+2. **Append** [Progress & change log](#progress--change-log-append-only) when a slice lands.
+3. **No new TwelveData polling** — all slices use cached 1m OHLCV (and existing SPY/VIX context). Bid-ask proxies are **OHLCV-derived only** until a separate data vendor is approved.
+4. **Baseline for A/B:** train **`rklb_daytrade_v3.yaml`** with the new flag **on** vs **off**; report **`val_f1_macro`**, **`take_profit` F1**, and **`sparkles backtest`** @ τ=0.35.
+
+**Prerequisite backlog (fix before or during G4):**
+
+| Issue | Action |
+|-------|--------|
+| **`sample_weight_method: uniqueness`** fails in grid (`Some train entry times missing from OHLCV index`) | Fix **`sparkles/models/sample_weights.py`** alignment; re-enable in refit grids after fix |
+| Notebook **`OVERRIDES`** incomplete vs **`FeatureConfig`** | After each G4 slice, extend **`sparkles_train_console.ipynb`** template with new toggles |
+
+---
+
+#### G4a — Technical indicators: RSI / EMA / MACD ✅
+
+**Done when:** ✅ **`technical_indicators`** YAML + **`sparkles/features/technical.py`**; preset **`rklb_daytrade_v3_g4a.yaml`**; tests **`test_technical_features.py`**.
+
+| YAML | Columns |
+|------|---------|
+| **`technical_indicators`** | `ema_dist_{w}m` for each **`ema_windows_bars`** |
+| | `rsi_{N}m` (Wilder, scaled 0–1) |
+| | `macd_line`, `macd_signal`, `macd_hist` |
+
+Sub-knobs: **`ema_windows_bars`** (default `[9,21,50]`), **`rsi_window_bars`** (14), **`macd_fast_bars`** / **`macd_slow_bars`** / **`macd_signal_bars`** (12/26/9).
+
+**A/B:** `python scripts/run_trials.py --base configs/experiments/rklb_daytrade_v3.yaml --preset configs/experiments/presets/rklb_daytrade_v3_g4a.yaml`
+
+---
+
+#### G4b — Day-of-week cyclical embeddings
+
+**Why second:** Small extension of **`session.py`**; complements existing **`sin_time` / `cos_time`** (intraday) with **interday** seasonality (Monday effect, Friday close, etc.).
+
+| YAML | Type | Default |
+|------|------|---------|
+| **`session_day_of_week`** | `bool` | `false` |
+
+**Options (pick in implementation, document in DEVELOPER.md):**
+
+- **A:** Add columns to existing **`session_time`** group when flag on.
+- **B (implemented):** Separate registry group **`session_day_of_week`** — toggle independent of **`session_time`**.
+
+**Columns:**
+
+| Column | Definition |
+|--------|------------|
+| `sin_dow`, `cos_dow` | `sin/cos(2π × weekday / 5)` on exchange session date of entry |
+
+**Warm-up:** `0` (point-in-time from entry timestamp).
+
+**Tests:** **`tests/test_session_features.py`** extension — known Friday entry → expected encoding.
+
+**Preset:** **`rklb_daytrade_v3_g4b.yaml`** (v3 + G4a + **`session_day_of_week: true`**).
+
+**A/B:** `python scripts/run_trials.py --base configs/experiments/rklb_daytrade_v3.yaml --preset configs/experiments/presets/rklb_daytrade_v3_g4b.yaml` (compare vs **`rklb_daytrade_v3_g4a.yaml`**).
+
+**Done when:** A/B vs G4a-only on same val window; owner approves G4c.
+
+---
+
+#### G4c — Bid-ask / order-flow proxies (OHLCV-only)
+
+**Why third:** Extends microstructure theme; **no L2 data** on TwelveData 1m — document proxies explicitly so live trading expectations stay honest.
+
+| YAML | Type | Default |
+|------|------|---------|
+| **`order_flow_proxies`** | `bool` | `false` |
+| **`roll_window_bars`** | `int` | `20` |
+| **`amihud_window_bars`** | `int` | `20` |
+
+**Columns (literature-backed OHLCV proxies):**
+
+| Column | Definition | Reference |
+|--------|------------|-----------|
+| `corwin_schultz_spread` | High-low based spread estimator (daily or rolling intraday variant) | Corwin & Schultz (2012) |
+| `roll_implied_spread` | From first-order autocovariance of log returns over window | Roll (1984) |
+| `amihud_illiq` | Mean `|r_t| / dollar_volume` over trailing window | Amihud (2002) |
+| `signed_volume_proxy` | `(close − open) / (high − low) × volume` normalized (Lee–Ready style without quotes) | Practitioner |
+| `upper_wick_pct`, `lower_wick_pct` | Wick size vs range on entry bar | Complements **`bar_microstructure`** |
+
+**Module:** **`sparkles/features/order_flow.py`**.
+
+**Overlap note:** Keep **`bar_microstructure`** as-is; G4c adds **multi-bar** and **volume-weighted** proxies. Document which to disable for ablation.
+
+**Warm-up:** `max(roll_window_bars, amihud_window_bars)`.
+
+**Tests:** **`tests/test_order_flow_features.py`** — synthetic bars with known spread/illiquidity; NaN handling when volume=0.
+
+**Preset:** **`rklb_daytrade_v3_g4c.yaml`**.
+
+**A/B:** `python scripts/run_trials.py --base configs/experiments/rklb_daytrade_v3.yaml --preset configs/experiments/presets/rklb_daytrade_v3_g4c.yaml` (compare vs **`rklb_daytrade_v3_g4b.yaml`**).
+
+**Future (out of G4c scope):** Real bid-ask from another vendor → new **`context_ingest`** symbol or column mapping; requires owner + credit review.
+
+**Done when:** A/B vs G4b; backtest precision check; owner approves G4d.
+
+---
+
+#### G4d — Fractional differentiation (I4c)
+
+**Why last:** Highest research/implementation risk; affects **level** features and warm-up length; needs ADF or fixed-`d` policy per López de Prado.
+
+**Moved from I4c** — fractional diff is a **feature engineering** concern, not a training-policy concern. **I4b (purged CV)** stays in Phase I backlog.
+
+| YAML | Type | Default |
+|------|------|---------|
+| **`frac_diff`** | `bool` | `false` |
+| **`frac_diff_d`** | `float` | `0.4` |
+| **`frac_diff_column`** | `literal` | `"close"` — series to differentiate on full 1m |
+| **`frac_diff_threshold`** | `float` | `1e-5` — weight cutoff for FFD (AFML) |
+| **`frac_diff_replace_log_close`** | `bool` | `false` — if true, swap **`log_entry_close`** for frac-diff feature |
+
+**Columns:**
+
+| Column | Definition |
+|--------|------------|
+| `frac_diff_close` | FFD of log(close) at entry bar (weights truncated at **`frac_diff_threshold`**) |
+| Optional `frac_diff_d_used` | Constant column for audit if we auto-search `d` later |
+
+**Module:** **`sparkles/features/frac_diff.py`** — implement **`get_weights_ffd(d, thres)`** per AFML Ch. 5; apply via dot product on trailing window.
+
+**Warm-up:** Length of FFD weight vector at chosen `d` (can be 100+ bars — log at INFO).
+
+**Interaction:**
+
+- When **`frac_diff_replace_log_close: true`**, builder registry skips or overrides **`log_entry_close`** (document in schema validator).
+- Compare **with** vs **without** raw **`log_entry_close`** in A/B — do not assume replacement is better.
+
+**Tests:** **`tests/test_frac_diff.py`** — unit test weights sum; constant series → ~0; random walk d≈0.5 region stationary (ADF optional smoke).
+
+**Preset:** **`rklb_daytrade_v3_g4d.yaml`**.
+
+**Done when:** Stationarity smoke on RKLB sample documented; A/B vs G4c; **`rklb_daytrade_xgb_v3_refit.yaml`** re-run; owner approves Phase H or live next steps.
+
+---
+
+### Phase G4+ — evaluation habit
+
+After **each** G4 slice:
+
+1. **Classification:** `val_f1_macro`, per-class val F1 (`take_profit` primary).
+2. **Economics:** `sparkles backtest -c rklb_daytrade_v3.yaml --run <id> --threshold 0.35`.
+3. **Feature audit:** `metrics.json` → `feature_columns` list; warm-up drop count in dry-run.
+4. **Grid:** only **`rklb_daytrade_xgb_v3_refit.yaml`** (~hundreds of combos), not full 15k, until v4 baseline is promoted.
+
+**Suggested implementation order:** **G4a → G4b → G4c → G4d** (easiest / lowest risk → highest research risk).
+
+**Owner approval template:** `approved — continue to G4b` (etc.).
+
 ### Phase G — evaluation habit
 
 After each G slice lands, compare to **`xgb_d3_reg_v1`** preset on **the same** RKLB train/val dates:
@@ -280,7 +450,7 @@ After each G slice lands, compare to **`xgb_d3_reg_v1`** preset on **the same** 
 | Item | Purpose |
 |------|---------|
 | **Purged / embargo CV** | Reduce leakage across overlapping label windows in **`run_trials.py`** / notebook sweeps |
-| **Fractional differentiation** | Stationary features that retain memory (López de Prado); alternative to raw **`log_entry_close`** |
+| **Fractional differentiation** | → **Phase G4d** (feature engineering). I4c label removed from I backlog. |
 
 ---
 
@@ -314,9 +484,9 @@ Do **not** tune hyperparameters on val economics until I1 exists — otherwise v
 
 **Completed:** A → B → C → D → E → F
 
-**Completed:** **G1**, **G2**, **G3** on RKLB day-trade v2.
+**Completed:** **G1**, **G2**, **G3** on RKLB day-trade v2. **v3 baseline** frozen (grid-best, **`rklb_daytrade_v3.yaml`**).
 
-**Next (owner-approved slices):** **Phase I** (**I1** val backtest → **I2** TP threshold policy → **I3** meta-label spike) → optional **I4+** (sample weights, purged CV) → **Phase H** (multi-symbol) only after I stabilizes tradable metrics on one ticker.
+**Next (owner-approved slices):** **Phase G4+** — **G4d** fractional diff (G4a ✅, G4b ✅, G4c ✅) → optional **I4b** purged CV → **Phase H**.
 
 B before C gave better ROI than jumping to XGBoost; **G before H** and **I before H** follow the same logic: prove features and **policy economics** on one symbol before scaling universe or going live.
 
@@ -372,3 +542,6 @@ For reviewers — what ships today when all **`features.*`** flags are **true** 
 | 2026-06-21 | **Phase I2 complete (owner approved):** TP threshold policy (**`--threshold`**, **`--sweep`**); **`train.entry_threshold_take_profit`** YAML opt-in; **`backtest_threshold_sweep.csv/json`**; tests **`test_threshold_sweep.py`**. Champion knee ~**0.35–0.50** precision. | `sparkles/backtest/threshold_sweep.py`, `sparkles/config/schema.py`, `sparkles/cli.py`, `tests/`, `DEVELOPER.md`, `docs/ML_EXPANSION.md`, `plan.md` | **Phase I2** — **blocked until owner approves I3** |
 | 2026-06-21 | **Phase I3 complete (owner approved):** **`sparkles meta-label train/compare`**; binary filter on primary-gated signals; **`meta_label_*` artifacts**; tests **`test_meta_label.py`**. Champion: meta **16.8%** precision vs threshold **12.1%** at τ=0.35. | `sparkles/backtest/meta_label.py`, `sparkles/cli.py`, `sparkles/config/schema.py`, `tests/`, `DEVELOPER.md`, `docs/ML_EXPANSION.md`, `plan.md` | **Phase I3** — **blocked until owner approves I4+ or H** |
 | 2026-06-21 | **Phase I4 complete (owner approved):** **`train.sample_weight_method: uniqueness`** — AFML label-uniqueness weights at fit; opt-in; tests **`test_sample_weights.py`**. | `sparkles/models/sample_weights.py`, `sparkles/models/train.py`, `sparkles/config/schema.py`, `tests/`, `DEVELOPER.md`, `docs/ML_EXPANSION.md`, `plan.md` | **Phase I4** — **blocked until owner approves I4b/c or H** |
+| 2026-06-23 | **Phase G4a complete (owner approved):** **`technical_indicators`** — EMA distance, Wilder RSI, MACD; **`sparkles/features/technical.py`**; preset **`rklb_daytrade_v3_g4a.yaml`**; tests **`test_technical_features.py`**. | `sparkles/features/technical.py`, `sparkles/config/schema.py`, `sparkles/features/registry.py`, `sparkles/features/dataset.py`, `configs/experiments/presets/rklb_daytrade_v3_g4a.yaml`, `tests/`, `docs/ML_EXPANSION.md`, `plan.md` | **Phase G4a** — **blocked until owner approves G4b** |
+| 2026-06-20 | **Phase G4b complete (owner approved):** **`session_day_of_week`** — `sin_dow`, `cos_dow` cyclical weekday; builder in **`session.py`**; preset **`rklb_daytrade_v3_g4b.yaml`**; tests in **`test_session_features.py`**. | `sparkles/features/session.py`, `sparkles/config/schema.py`, `sparkles/features/registry.py`, `configs/experiments/presets/rklb_daytrade_v3_g4b.yaml`, `tests/`, `notebooks/sparkles_train_console.ipynb`, `DEVELOPER.md`, `docs/ML_EXPANSION.md`, `plan.md` | **Phase G4b** — **blocked until owner approves G4c** |
+| 2026-06-20 | **Phase G4c complete (owner approved):** **`order_flow_proxies`** — Corwin–Schultz, Roll, Amihud, signed volume, wick pct; **`sparkles/features/order_flow.py`**; preset **`rklb_daytrade_v3_g4c.yaml`**; tests **`test_order_flow_features.py`**. | `sparkles/features/order_flow.py`, `sparkles/config/schema.py`, `sparkles/features/registry.py`, `sparkles/features/dataset.py`, `configs/experiments/presets/rklb_daytrade_v3_g4c.yaml`, `tests/`, `notebooks/sparkles_train_console.ipynb`, `DEVELOPER.md`, `docs/ML_EXPANSION.md`, `plan.md` | **Phase G4c** — **blocked until owner approves G4d** |

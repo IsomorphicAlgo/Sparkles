@@ -2,7 +2,7 @@
 """Cartesian grid search over experiment YAML knobs (ML expansion Phase E).
 
 Loads a grid spec YAML, merges base (+ optional preset), trains every combination,
-and writes a wide results CSV. Each run also appends to ``artifacts/experiments.jsonl``.
+and writes artifacts under ``artifacts/grid_search/{run_id}_{prefix}/``.
 
 Usage (from repository root):
 
@@ -16,71 +16,29 @@ Usage (from repository root):
 from __future__ import annotations
 
 import argparse
-import json
 import sys
-import time
 from pathlib import Path
-from typing import Any
-
-import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from sparkles.config.grid import build_grid_configs, load_grid_spec
+from sparkles.config.grid_runner import (
+    default_progress,
+    new_grid_run_dir,
+    run_grid_dry_run,
+    run_grid_train,
+    write_grid_meta,
+)
 from sparkles.config.schema import ExperimentConfig
-from sparkles.models.train import dry_run_train, format_dry_run_report, run_train
 from sparkles.tracking.experiments_csv import (
     export_experiments_to_csv,
     experiments_log_path,
 )
 
 DEFAULT_BASE = REPO_ROOT / "configs" / "experiments" / "rklb_daytrade_v2.yaml"
-DEFAULT_CSV = REPO_ROOT / "artifacts" / "grid_search_results.csv"
-
-
-def _read_metrics(run_dir: Path) -> dict[str, Any]:
-    path = run_dir / "metrics.json"
-    if not path.is_file():
-        return {}
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def _result_row(
-    combo: dict[str, Any],
-    cfg: ExperimentConfig,
-    *,
-    ok: bool,
-    run_dir: Path | None,
-    error: str | None,
-    elapsed_s: float,
-) -> dict[str, Any]:
-    row: dict[str, Any] = {
-        "ok": ok,
-        "elapsed_s": round(elapsed_s, 3),
-        "experiment_name": cfg.train.experiment_name,
-        "run_dir": str(run_dir) if run_dir else "",
-        "error": error or "",
-    }
-    for path, value in combo.items():
-        row[f"grid.{path}"] = value
-    if run_dir is not None:
-        row["run_id"] = run_dir.name
-        metrics = _read_metrics(run_dir)
-        for key in (
-            "val_f1_macro",
-            "val_f1_weighted",
-            "val_accuracy",
-            "train_f1_macro",
-            "train_accuracy",
-            "train_n",
-            "val_n",
-            "sample_weight_method",
-            "sample_weight_mean",
-        ):
-            row[key] = metrics.get(key)
-    return row
+DEFAULT_GRID_ROOT = REPO_ROOT / "artifacts" / "grid_search"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -109,10 +67,10 @@ def main(argv: list[str] | None = None) -> int:
         help="Pre-flight each combo; do not fit models",
     )
     parser.add_argument(
-        "--output",
-        type=Path,
-        default=None,
-        help="Results CSV path (default: spec.output or artifacts/grid_search_results.csv)",
+        "--progress-every",
+        type=int,
+        default=100,
+        help="Print progress every N combinations (default 100)",
     )
     parser.add_argument(
         "--no-export-log",
@@ -125,6 +83,7 @@ def main(argv: list[str] | None = None) -> int:
     base_path = args.base or Path(spec.get("base") or DEFAULT_BASE)
     preset_path = args.preset or spec.get("preset")
     preset = Path(preset_path) if preset_path else None
+    prefix = str(spec.get("experiment_name_prefix") or spec.get("grid_name") or "grid")
 
     pairs = build_grid_configs(
         spec,
@@ -135,79 +94,61 @@ def main(argv: list[str] | None = None) -> int:
         print("Grid spec produced zero combinations.", file=sys.stderr)
         return 1
 
+    run_dir = new_grid_run_dir(DEFAULT_GRID_ROOT, prefix=prefix)
+    write_grid_meta(
+        run_dir,
+        {
+            "grid_spec": str(args.grid.resolve()),
+            "base": str(base_path.resolve()),
+            "preset": str(preset.resolve()) if preset else None,
+            "n_combinations": len(pairs),
+            "dry_run": args.dry_run,
+        },
+    )
+
     print(f"Grid: {args.grid.name} — {len(pairs)} combination(s)")
     print(f"Base: {base_path.resolve()}")
     if preset:
         print(f"Preset: {preset.resolve()}")
+    print(f"Output: {run_dir.resolve()}")
 
-    rows: list[dict[str, Any]] = []
-    ok_all = True
     last_cfg: ExperimentConfig | None = None
+    ok_all = True
 
-    for i, (combo, cfg) in enumerate(pairs, start=1):
-        name = cfg.train.experiment_name or f"grid_{i}"
-        print(f"\n=== [{i}/{len(pairs)}] {name} ===")
-        for path, value in sorted(combo.items()):
-            print(f"  {path}: {value}")
-
-        t0 = time.perf_counter()
-        if args.dry_run:
-            report = dry_run_train(cfg)
-            text = format_dry_run_report(report)
-            print(text)
-            ok = report.ready
-            err = None if ok else "dry-run not ready"
-            run_dir = None
-        else:
-            try:
-                run_dir = run_train(cfg)
-                ok = True
-                err = None
-            except (FileNotFoundError, ValueError, KeyError) as e:
-                ok = False
-                err = str(e)
-                run_dir = None
-                print(err, file=sys.stderr)
-
-        elapsed = time.perf_counter() - t0
-        rows.append(
-            _result_row(combo, cfg, ok=ok, run_dir=run_dir, error=err, elapsed_s=elapsed),
+    if args.dry_run:
+        df, ready_n = run_grid_dry_run(
+            pairs,
+            run_dir,
+            base_dir=REPO_ROOT,
+            progress_every=args.progress_every,
+            progress=default_progress,
         )
-        last_cfg = cfg
-        if not ok:
-            ok_all = False
-
-    out_path = args.output or spec.get("output")
-    csv_path = Path(out_path).resolve() if out_path else DEFAULT_CSV.resolve()
-    csv_path.parent.mkdir(parents=True, exist_ok=True)
-    df = pd.DataFrame(rows)
-    grid_cols = sorted(c for c in df.columns if c.startswith("grid."))
-    metric_cols = [
-        c
-        for c in (
-            "ok",
-            "elapsed_s",
-            "experiment_name",
-            "run_id",
-            "val_f1_macro",
-            "val_f1_weighted",
-            "val_accuracy",
-            "train_f1_macro",
-            "sample_weight_method",
-            "run_dir",
-            "error",
+        ok_all = ready_n == len(pairs)
+        print(f"\nDry-run ready: {ready_n}/{len(pairs)}")
+        print(f"Log:  {run_dir / 'dry_run_log.txt'}")
+        print(f"CSV:  {run_dir / 'dry_run_summary.csv'}")
+        last_cfg = pairs[-1][1] if pairs else None
+    else:
+        df, best = run_grid_train(
+            pairs,
+            run_dir,
+            base_dir=REPO_ROOT,
+            progress_every=args.progress_every,
+            progress=default_progress,
         )
-        if c in df.columns
-    ]
-    other = [c for c in df.columns if c not in grid_cols + metric_cols]
-    df = df[grid_cols + metric_cols + other]
-    df.to_csv(csv_path, index=False)
-    print(f"\nWrote {len(df)} row(s) to {csv_path}")
+        ok_all = bool(df["ok"].all()) if "ok" in df.columns and len(df) else True
+        print(f"\nWrote {len(df)} row(s) to {run_dir / 'results.csv'}")
+        print(f"Log: {run_dir / 'train_log.txt'}")
+        if best:
+            print(
+                f"Best val_f1_macro={best.get('val_f1_macro')}  "
+                f"run_id={best.get('run_id')}",
+            )
+        last_cfg = pairs[-1][1] if pairs else None
 
     if (
         not args.dry_run
         and not args.no_export_log
-        and ok_all
         and last_cfg is not None
     ):
         log_path = experiments_log_path(last_cfg, base_dir=REPO_ROOT)

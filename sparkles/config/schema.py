@@ -179,6 +179,10 @@ class FeatureConfig(BaseModel):
         default=False,
         description="minutes_since_open, minutes_to_close, sin_time, cos_time",
     )
+    session_day_of_week: bool = Field(
+        default=False,
+        description="Phase G4b: sin_dow, cos_dow cyclical weekday (Mon=0 … Fri=4)",
+    )
     volume_context: bool = Field(
         default=False,
         description="rel_volume, log_rel_volume vs trailing median volume",
@@ -205,6 +209,66 @@ class FeatureConfig(BaseModel):
         ge=1,
         description="Trailing SPY 1m log-return lookback when market_context is on",
     )
+    technical_indicators: bool = Field(
+        default=False,
+        description="Phase G4a: EMA distance, Wilder RSI, MACD on 1m close at entry",
+    )
+    ema_windows_bars: list[int] = Field(
+        default_factory=lambda: [9, 21, 50],
+        description="EMA lookback spans (bars) for ema_dist_{w}m columns",
+    )
+    rsi_window_bars: int = Field(
+        default=14,
+        ge=2,
+        description="Wilder RSI lookback; column rsi_{N}m scaled to [0, 1]",
+    )
+    macd_fast_bars: int = Field(
+        default=12,
+        ge=2,
+        description="MACD fast EMA span",
+    )
+    macd_slow_bars: int = Field(
+        default=26,
+        ge=3,
+        description="MACD slow EMA span",
+    )
+    macd_signal_bars: int = Field(
+        default=9,
+        ge=2,
+        description="MACD signal EMA span",
+    )
+    order_flow_proxies: bool = Field(
+        default=False,
+        description="Phase G4c: OHLCV spread/illiquidity proxies (no L2 data)",
+    )
+    roll_window_bars: int = Field(
+        default=20,
+        ge=2,
+        description="Trailing window for Corwin–Schultz and Roll spread proxies",
+    )
+    amihud_window_bars: int = Field(
+        default=20,
+        ge=2,
+        description="Trailing window for Amihud illiquidity proxy",
+    )
+
+    @field_validator("ema_windows_bars")
+    @classmethod
+    def _ema_windows_positive(cls, v: list[int]) -> list[int]:
+        if not v:
+            raise ValueError("features.ema_windows_bars must not be empty when used")
+        if any(w < 2 for w in v):
+            raise ValueError("features.ema_windows_bars: each value must be >= 2")
+        return sorted(set(v))
+
+    @model_validator(mode="after")
+    def _macd_fast_slower_than_slow(self) -> FeatureConfig:
+        if self.macd_fast_bars >= self.macd_slow_bars:
+            raise ValueError(
+                "features.macd_fast_bars must be < macd_slow_bars "
+                f"(got {self.macd_fast_bars} >= {self.macd_slow_bars})",
+            )
+        return self
 
     @field_validator("returns_horizons_bars")
     @classmethod
@@ -238,10 +302,13 @@ class FeatureConfig(BaseModel):
                 self.realized_vol_multi,
                 self.range_vol_multi,
                 self.session_time,
+                self.session_day_of_week,
                 self.volume_context,
                 self.vwap_distance,
                 self.bar_microstructure,
                 self.market_context,
+                self.technical_indicators,
+                self.order_flow_proxies,
             ),
         ):
             raise ValueError(
@@ -249,7 +316,8 @@ class FeatureConfig(BaseModel):
                 "(log_entry_close, label_geometry, intraday_range_pct, log1p_volume, "
                 "returns_multi_horizon, realized_vol_multi, range_vol_multi, "
                 "session_time, volume_context, vwap_distance, bar_microstructure, "
-                "market_context)",
+                "market_context, technical_indicators, session_day_of_week, "
+                "order_flow_proxies)",
             )
         return self
 

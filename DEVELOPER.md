@@ -40,8 +40,14 @@ Quick reference for **where to change what** in Phase 1. Conceptual methodology:
   - **`returns_multi_horizon` (G1):** `ret_{N}m` — log return over trailing *N* 1m bars ending at entry (default horizons 5, 15, 30, 60).
   - **`realized_vol_multi` (G1):** `rv_{N}m` — std of 1m log returns over trailing window; optional `rv_ratio_{short}_{long}m`.
   - **`range_vol_multi` (G1):** `parkinson_{N}m`, optional `atr_norm_{N}m` — range vol and normalized ATR (default window 30).
-  G1 groups read the **full ingest OHLCV** up to each entry bar (no lookahead). Rows before the warm-up window are dropped automatically (max horizon/window, default 120 bars).
-  All default **true** (Phase 1 column set). No future path / `bars_forward` in the feature matrix.
+  - **`session_time` (G2):** `minutes_since_open`, `minutes_to_close`, `sin_time`, `cos_time`.
+  - **`volume_context` (G2):** `rel_volume`, `log_rel_volume` vs trailing median volume.
+  - **`vwap_distance` (G2):** `vwap_session_dist_pct` — distance from session VWAP.
+  - **`bar_microstructure` (G3):** `close_loc_value`, `bar_body_pct` on entry bar.
+  - **`market_context` (G3):** `spy_ret_{N}m`, `vix_chg_1d` — requires **`context_ingest`** + ingest SPY/VIXY.
+  - **`technical_indicators` (G4a):** `ema_dist_{w}m`, `rsi_{N}m` (0–1), `macd_line`, `macd_signal`, `macd_hist` — knobs **`ema_windows_bars`**, **`rsi_window_bars`**, **`macd_*_bars`**.
+  - **`session_day_of_week` (G4b):** `sin_dow`, `cos_dow` — cyclical weekday (Mon=0 … Fri=4) from entry session date in exchange TZ; warm-up **0**.
+  - **`order_flow_proxies` (G4c):** OHLCV-only liquidity proxies — **`corwin_schultz_spread`**, **`roll_implied_spread`**, **`amihud_illiq`**, **`signed_volume_proxy`**, **`upper_wick_pct`**, **`lower_wick_pct`**. Not real bid-ask; knobs **`roll_window_bars`**, **`amihud_window_bars`**. Complements **`bar_microstructure`** (single-bar); disable one or the other for ablation.
 - **Config:** `model.*`, `train.*` (includes **`export_predictions`**), and **`features.*`**. Optional **`journal:`** — **`csv_path`**: your trade log (repo-relative or absolute). Optional **`live_ingest:`** — Phase 2 Plan A near-live refresh (**`enabled`** default **false**); see **`docs/plan-phase2-01-data-ingest.md`**. **CSV:** date column **`entry_date`**, **`date`**, **`open_date`**, or **`entry`** (ISO). Optional **`symbol`** / **`ticker`** filters rows to the experiment **`symbol`**. Extra columns (`exit_date`, `shares`, `pnl_pct`, `notes`, …) are kept in the merge output. **Long holds:** one row per **open** is fine; compare aligns on **entry session date** to aggregated model predictions that day (not daily P&L over the hold).
 - **Journal compare:** `sparkles journal compare -c …` — loads **`journal.csv_path`**, latest run with **`predictions.parquet`** (or **`--run <run_id>`**), aggregates predictions by **`session_date`** for **`--split val`** (default), **`train`**, or **`both`**, left-joins journal **`entry_date`**, writes **`journal_compare.csv`** in the run folder. Template: **`configs/examples/journal_trades.example.csv`**.
 - **Val backtest / policy (Phase I1–I3):** Post-train CLI on the run folder (not in the notebook yet):
@@ -55,10 +61,10 @@ Quick reference for **where to change what** in Phase 1. Conceptual methodology:
 - **Dry-run before train:** `sparkles train -c configs/experiments/rklb_baseline.yaml --dry-run` — prints train/val row counts, **class balance**, enabled **features**, and feature column names; exits **1** if ingest/label missing or split floors fail.
 - **Preset overlays:** `configs/experiments/presets/*.yaml` — **`xgb_d3_reg_v1.yaml`** is the RKLB **baseline-label** champion (2026-06-20); **`rklb_daytrade_champion_v1.yaml`** is the **day-trade v2 + G1+G2+G3** champion (2026-06-21); **`rklb_daytrade_champion_uniqueness_v1.yaml`** adds **`train.sample_weight_method: uniqueness`**. Merge with **`load_experiment_config_merged(base, preset)`** or **`python scripts/run_trials.py --preset …`**
 - **Batch trials:** `python scripts/run_trials.py` (default base: **`rklb_baseline.yaml`**, all presets). Flags: **`--dry-run`**, **`--preset path/to/overlay.yaml`**, **`--no-export`**, **`-o artifacts/training_log.csv`**. After real trains, refreshes the wide CSV for spreadsheet comparison.
-- **Grid search:** `python scripts/run_grid_search.py --grid configs/experiments/grids/rklb_daytrade_xgb_v1.yaml` — cartesian sweep over dotted YAML paths (`model.*`, `features.*`, `train.*`). Spec files live under **`configs/experiments/grids/`**; results CSV under **`artifacts/grid_search/`**. Use **`fixed.train.export_predictions: none`** in the spec to skip Parquet export during large grids.
+- **Grid search:** `python scripts/run_grid_search.py --grid configs/experiments/grids/rklb_daytrade_xgb_v1.yaml` — each run gets its own folder under **`artifacts/grid_search/{run_id}_{prefix}/`** with **`results.csv`** (train) or **`dry_run_summary.csv`** + **`dry_run_log.txt`** (dry-run). Notebook: **`RUN_MODE="grid"`**, **`GRID_PROGRESS_EVERY`** for progress lines only.
 - **Notebook console:** **`notebooks/sparkles_train_console.ipynb`** — set **`RUN_MODE`** to **`"single"`** or **`"grid"`**; inline **`GRID_SPEC`** or **`GRID_FROM_YAML`** for sweeps (`pip install -e ".[notebook]"`).
 - **Compare results:** **`sparkles experiments export -c …`** or open **`artifacts/training_log.csv`**; sort by **`val_f1_macro`** (preferred for imbalanced labels) or **`val_accuracy`**.
-- **Feature expansion:** Phases **G1–G3** and **I1–I4** complete. **Next:** optional **I4b/c** (purged CV, fractional diff) or **Phase H** per **[docs/ML_EXPANSION.md](docs/ML_EXPANSION.md)**.
+- **Feature expansion:** Phases **G1–G3** and **I1–I4** complete. **G4a**–**G4c** ✅. **v3 baseline:** **`rklb_daytrade_v3.yaml`**. **Next:** **G4d** per **[docs/ML_EXPANSION.md](docs/ML_EXPANSION.md)**.
 
 ## Labeling and minimum profit per trade
 

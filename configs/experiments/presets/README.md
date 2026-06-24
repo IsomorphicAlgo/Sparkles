@@ -34,6 +34,10 @@ sparkles train -c configs/experiments/rklb_baseline.yaml --dry-run
 | **`rklb_daytrade_g1_g2_g3_v1.yaml`** | G1 + G2 + G3 on day-trade v2 (feature flags only; base model hparams) |
 | **`rklb_daytrade_champion_v1.yaml`** | **Day-trade champion** (2026-06-21): G1+G2+G3 + tuned XGB (depth 3, lr 0.08, n_estimators 127) — reproduces **`Trial_RB_G1_G2_G3_v1`** |
 | **`rklb_daytrade_champion_uniqueness_v1.yaml`** | Champion v1 + **`train.sample_weight_method: uniqueness`** (I4 AFML weights) |
+| **`rklb_daytrade_v3.yaml`** | **Full experiment v3** — grid-best XGB knobs + G1/G2/G3; same labels as v2 (`dt_v2`) |
+| **`rklb_daytrade_v3_g4a.yaml`** | **G4a** overlay on v3 — **`technical_indicators: true`** (RSI / EMA / MACD) |
+| **`rklb_daytrade_v3_g4b.yaml`** | **G4b** overlay on v3 + G4a — **`session_day_of_week: true`** (`sin_dow`, `cos_dow`) |
+| **`rklb_daytrade_v3_g4c.yaml`** | **G4c** overlay on v3 + G4a + G4b — **`order_flow_proxies: true`** (OHLCV spread/illiquidity) |
 
 **Day-trade experiment (new labels):**
 

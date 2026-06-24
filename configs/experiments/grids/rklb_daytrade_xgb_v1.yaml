@@ -21,6 +21,10 @@ fixed:
 output: artifacts/grid_search/rklb_daytrade_xgb_v1.csv
 
 params:
-  model.xgb_n_estimators: [60, 127, 255]
-  model.xgb_learning_rate: [0.02, 0.08]
-  model.xgb_max_depth: [3, 4]
+  model.xgb_n_estimators: [63, 127, 255, 511]
+  model.xgb_learning_rate: [0.01, 0.015, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07]
+  model.xgb_max_depth: [3, 4, 5, 6, 7]
+  model.xgb_subsample: [0.6, 0.7, 0.8, 0.9]
+  model.xgb_colsample_bytree: [ 0.6, 0.7, 0.8, 0.9]
+  "features.market_spy_return_bars": [5, 15, 30]
+  "train.sample_weight_method": ["none", "uniqueness"]

@@ -14,4 +14,4 @@ For the main pipeline, use the **`sparkles`** CLI (see **README.md** and **METHO
 
 **`run_trials.py`** — batch hyperparameter trials: merges **`configs/experiments/presets/*.yaml`** onto a base experiment, optional **`--dry-run`**, then trains and exports **`artifacts/training_log.csv`**. See **`configs/experiments/presets/README.md`**.
 
-**`run_grid_search.py`** — cartesian grid over dotted YAML paths (model, features, train knobs). Spec YAML under **`configs/experiments/grids/`**; writes **`artifacts/grid_search/*.csv`** and appends each run to **`experiments.jsonl`**. Use **`fixed.train.export_predictions: none`** in the spec to speed up large grids.
+**`run_grid_search.py`** — cartesian grid over dotted YAML paths (model, features, train knobs). Each invocation writes a timestamped folder under **`artifacts/grid_search/`** (`dry_run_log.txt`, `dry_run_summary.csv`, or `results.csv` + `train_log.txt`). Progress prints every **`--progress-every N`** combos (default 100).

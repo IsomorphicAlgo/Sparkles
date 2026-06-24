@@ -19,7 +19,9 @@ from sparkles.features.intraday import max_warmup_bars as g1_warmup_bars
 from sparkles.features.market_context import g3_warmup_bars
 from sparkles.features.market_data import load_market_context_frames
 from sparkles.features.registry import assemble_feature_columns
+from sparkles.features.order_flow import g4c_warmup_bars
 from sparkles.features.session import g2_warmup_bars
+from sparkles.features.technical import g4a_warmup_bars
 from sparkles.features.time import entry_session_dates
 from sparkles.features.volatility import ensure_exchange_tz_index
 
@@ -27,7 +29,13 @@ logger = logging.getLogger(__name__)
 
 
 def feature_warmup_bars(fc: FeatureConfig) -> int:
-    return max(g1_warmup_bars(fc), g2_warmup_bars(fc), g3_warmup_bars(fc))
+    return max(
+        g1_warmup_bars(fc),
+        g2_warmup_bars(fc),
+        g3_warmup_bars(fc),
+        g4a_warmup_bars(fc),
+        g4c_warmup_bars(fc),
+    )
 
 
 def _required_label_columns(fc: FeatureConfig) -> set[str]:
@@ -50,11 +58,11 @@ def _required_ohlcv_columns(fc: FeatureConfig) -> set[str]:
     need: set[str] = {"close"}
     if fc.intraday_range_pct or fc.range_vol_multi or fc.vwap_distance:
         need.update({"high", "low"})
-    if fc.bar_microstructure:
+    if fc.bar_microstructure or fc.order_flow_proxies:
         need.update({"open", "high", "low"})
-    if fc.log1p_volume or fc.volume_context or fc.vwap_distance:
+    if fc.log1p_volume or fc.volume_context or fc.vwap_distance or fc.order_flow_proxies:
         need.add("volume")
-    if fc.returns_multi_horizon or fc.realized_vol_multi:
+    if fc.returns_multi_horizon or fc.realized_vol_multi or fc.technical_indicators:
         need.add("close")
     return need
 
@@ -68,6 +76,8 @@ def _needs_full_ohlcv_history(fc: FeatureConfig) -> bool:
         or fc.volume_context
         or fc.vwap_distance
         or fc.market_context
+        or fc.technical_indicators
+        or fc.order_flow_proxies
     )
 
 
