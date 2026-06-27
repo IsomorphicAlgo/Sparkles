@@ -123,9 +123,10 @@ df2 = add_volatility_from_config(df, cfg)
   sparkles ingest -c configs/experiments/rklb_daytrade_v2.yaml -s VIXY -i 1day
   ```
   A fresh RKLB cache does **not** block SPY/VIX downloads (or vice versa).
-- **Flags:** `--force` / `-f` bypasses `cache_ttl_hours` and re-downloads the full `data_start`–`data_end` range for **that symbol only**; `-v` enables verbose chunk logging.
+- **Incremental cache:** one Parquet per symbol/interval — `{SYMBOL}_1min.parquet`, `SPY_1min.parquet`, `VIXY_1day.parquet`. Extending **`data_end`** in YAML fetches **only missing calendar days** and appends (deduped by bar timestamp). Legacy dated files (`{SYMBOL}_1min_{start}_{end}.parquet`) are still read and migrated on the next ingest.
+- **Flags:** `--force` / `-f` re-downloads the configured `data_start`–`data_end` window for **that symbol only** and merges into the canonical file; `-v` enables verbose chunk logging.
 - **Config:** `ingest_chunk_calendar_days` (default **10** — fewer HTTP calls); `ingest_sleep_seconds_between_chunks` (default **20** s — stay under free-tier **~8 API credits/minute**); `twelvedata_per_minute_credit_wait_seconds` (default **65** — wait for the next minute when TwelveData returns a per-minute credit error, instead of fast retries); `twelvedata_outputsize` (max 5000 per call); `http_timeout_seconds`; `retry_max_attempts`; optional `twelvedata_exchange` (e.g. `NASDAQ`).
-- **On disk:** `{SYMBOL}_1min_{data_start}_{data_end}.parquet` — OHLCV index is bar datetime (as returned by TwelveData for `exchange_timezone`).
+- **On disk:** canonical `{SYMBOL}_{interval}.parquet` — full history for that ticker; **`label` / `train`** slice to experiment **`data_start`..`data_end`** at load time.
 - **Context symbols (G3):** optional **`context_ingest.symbols`** (e.g. SPY `1min`, VIX `1day` over the same date span). Download each with **`sparkles ingest -c … -s SPY -i 1min`** (interval inferred from YAML if omitted for listed symbols). Enable only when using **`features.market_context`** (extra API credits).
 - **Code:** `sparkles/data/ingest.py`, `sparkles/data/twelvedata_client.py`, `sparkles/data/retry.py`
 

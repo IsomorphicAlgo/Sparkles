@@ -70,6 +70,14 @@ def is_retryable_requests_error(exc: BaseException) -> bool:
     return False
 
 
+def is_no_data_in_range_error(exc: BaseException) -> bool:
+    """TwelveData 400 when the calendar window has no bars (weekend, holiday, future)."""
+    if not isinstance(exc, (BadRequestError, TwelveDataError)):
+        return False
+    msg = str(exc).lower()
+    return "no data is available" in msg
+
+
 def is_per_minute_credit_exhausted_error(exc: BaseException) -> bool:
     """TwelveData free/basic: '8 credits per minute' style errors."""
     if not isinstance(exc, TwelveDataError):

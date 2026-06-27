@@ -10,7 +10,9 @@ from sparkles.config.schema import ExperimentConfig
 from sparkles.data.ingest import parquet_cache_path
 from sparkles.labels.triple_barrier import (
     build_triple_barrier_labels,
+    find_labeled_parquet_path,
     labeled_parquet_path,
+    resolve_labeled_parquet_path,
     run_label,
 )
 
@@ -109,7 +111,21 @@ def test_end_of_data_when_no_barrier_before_series_end() -> None:
     assert int(row["bars_forward"]) == 2
 
 
-def test_labeled_parquet_path_includes_stride(tmp_path) -> None:
+def test_find_labeled_parquet_path_when_data_end_extended(tmp_path) -> None:
+    cfg = _cfg(
+        symbol="RKLB",
+        data_end=date(2026, 5, 30),
+        label_entry_stride=10,
+        label_cache_suffix="dt_v2",
+    )
+    cache = tmp_path / "data" / "cache"
+    cache.mkdir(parents=True)
+    legacy = cache / "RKLB_labeled_2022-01-01_2026-03-30_s10_dt_v2.parquet"
+    legacy.write_bytes(b"")
+    found = find_labeled_parquet_path(cfg, base_dir=tmp_path)
+    assert found == legacy
+    assert resolve_labeled_parquet_path(cfg, base_dir=tmp_path) == legacy
+
     cfg = _cfg(label_entry_stride=390)
     p = labeled_parquet_path(cfg, base_dir=tmp_path)
     assert "_s390.parquet" in p.name

@@ -12,6 +12,7 @@ If you change labeling horizons or barrier math, update configs/experiments/*.ya
 from __future__ import annotations
 
 import logging
+from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -192,6 +193,88 @@ def labeled_parquet_path(cfg: ExperimentConfig, base_dir: Path | None = None) ->
     return cache / f"{name}.parquet"
 
 
+def _labeled_parquet_glob_pattern(cfg: ExperimentConfig) -> str:
+    suffix = f"_{cfg.label_cache_suffix}" if cfg.label_cache_suffix else ""
+    return f"{cfg.symbol.upper()}_labeled_*_s{cfg.label_entry_stride}{suffix}.parquet"
+
+
+def find_labeled_parquet_path(
+    cfg: ExperimentConfig,
+    base_dir: Path | None = None,
+) -> Path | None:
+    """Best on-disk labeled cache for this symbol/stride/suffix (any data_end)."""
+    exact = labeled_parquet_path(cfg, base_dir=base_dir)
+    if exact.is_file():
+        return exact
+    root = Path.cwd() if base_dir is None else base_dir
+    cache = root / cfg.paths.cache_dir
+    candidates = list(cache.glob(_labeled_parquet_glob_pattern(cfg)))
+    if not candidates:
+        return None
+
+    def _labeled_end_date(path: Path) -> date:
+        # RKLB_labeled_2022-01-01_2026-03-30_s10_dt_v2
+        stem = path.stem
+        marker = "_labeled_"
+        i = stem.find(marker)
+        if i < 0:
+            return date.min
+        rest = stem[i + len(marker) :]
+        end_str = rest.split("_s", 1)[0].split("_")[-1]
+        try:
+            return date.fromisoformat(end_str)
+        except ValueError:
+            return date.min
+
+    return max(candidates, key=lambda p: (_labeled_end_date(p), p.stat().st_mtime))
+
+
+def resolve_labeled_parquet_path(
+    cfg: ExperimentConfig,
+    base_dir: Path | None = None,
+) -> Path:
+    """Path to labeled Parquet (exact YAML name or best legacy match)."""
+    found = find_labeled_parquet_path(cfg, base_dir=base_dir)
+    if found is not None:
+        return found
+    return labeled_parquet_path(cfg, base_dir=base_dir)
+
+
+def slice_labels_to_experiment_range(
+    labels: pd.DataFrame,
+    cfg: ExperimentConfig,
+) -> pd.DataFrame:
+    """Trim labeled rows to ``data_start``..``data_end`` session dates."""
+    if labels.empty:
+        return labels
+    from sparkles.features.time import entry_session_dates
+
+    d = entry_session_dates(labels.index, cfg.exchange_timezone)
+    start = cfg.data_start
+    end = cfg.data_end
+    mask = (d >= start) & (d <= end)
+    return labels.loc[mask]
+
+
+def load_labeled_cache(
+    cfg: ExperimentConfig,
+    *,
+    base_dir: Path | None = None,
+) -> pd.DataFrame:
+    path = resolve_labeled_parquet_path(cfg, base_dir=base_dir)
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"Labeled Parquet not found: {path}. Run `sparkles label -c …` first.",
+        )
+    labels = pd.read_parquet(path)
+    if labels.index.name != "entry_time" and "entry_time" in labels.columns:
+        labels = labels.set_index("entry_time")
+    ix = ensure_exchange_tz_index(pd.DatetimeIndex(labels.index), cfg.exchange_timezone)
+    labels = labels.copy()
+    labels.index = ix
+    return slice_labels_to_experiment_range(labels, cfg)
+
+
 def run_label(
     cfg: ExperimentConfig,
     *,
@@ -200,14 +283,14 @@ def run_label(
     base_dir: Path | None = None,
 ) -> Path:
     """Load OHLCV (or Parquet), ensure vol columns, write labeled Parquet."""
-    from sparkles.data.ingest import parquet_cache_path
+    from sparkles.data.ingest import load_parquet_cache, slice_ohlcv_to_experiment_range
     from sparkles.features import add_volatility_from_config
 
     if ohlcv is None:
-        pq = parquet_path or parquet_cache_path(cfg, base_dir=base_dir)
-        if not pq.is_file():
-            raise FileNotFoundError(f"Ingest Parquet not found: {pq}")
-        ohlcv = pd.read_parquet(pq)
+        if parquet_path is not None:
+            ohlcv = slice_ohlcv_to_experiment_range(pd.read_parquet(parquet_path), cfg)
+        else:
+            ohlcv = load_parquet_cache(cfg, base_dir=base_dir)
 
     ann_col = _ann_vol_column_name(cfg.vol_lookback_trading_days)
     if ann_col not in ohlcv.columns:

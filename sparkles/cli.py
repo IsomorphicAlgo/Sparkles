@@ -120,11 +120,12 @@ def ingest(
 ) -> None:
     """Download and cache OHLCV for one symbol/interval (historical batch; TwelveData).
 
-    Uses data_start/data_end from the experiment YAML. Each symbol is cached
-    independently — download SPY/VIX without re-fetching RKLB:
+    Uses data_start/data_end from the experiment YAML. One append-friendly Parquet
+    per symbol/interval; extending data_end fetches only missing days (not the
+    full history). Each symbol is cached independently:
 
       sparkles ingest -c configs/experiments/rklb_daytrade_v2.yaml -s SPY -i 1min
-      sparkles ingest -c configs/experiments/rklb_daytrade_v2.yaml -s VIX -i 1day
+      sparkles ingest -c configs/experiments/rklb_daytrade_v2.yaml -s VIXY -i 1day
     """
     logging.basicConfig(
         level=logging.DEBUG if verbose else logging.INFO,

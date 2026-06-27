@@ -614,7 +614,7 @@ class ExperimentConfig(BaseModel):
             )
         return v
 
-    max_day_trades: int = Field(default=3, ge=1, le=3)
+    max_day_trades: int = Field(default=10, ge=1, le=100)
     rolling_business_days: int = Field(default=5, ge=1)
 
     # Ingest / TwelveData (Iteration 2)

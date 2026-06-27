@@ -8,8 +8,8 @@ from typing import Any
 
 from sparkles.config.schema import ExperimentConfig
 from sparkles.models.evaluation import per_class_rows
-from sparkles.data.ingest import parquet_cache_path
-from sparkles.labels.triple_barrier import labeled_parquet_path
+from sparkles.data.ingest import load_parquet_cache, resolve_symbol_parquet_path
+from sparkles.labels.triple_barrier import resolve_labeled_parquet_path
 
 
 def _json_compact(obj: Any) -> str:
@@ -208,8 +208,8 @@ def run_phase1_report(
     )
     lines.extend(_format_yaml_parameters(cfg))
 
-    ingest_p = parquet_cache_path(cfg, base_dir=base_dir)
-    label_p = labeled_parquet_path(cfg, base_dir=base_dir)
+    ingest_p = resolve_symbol_parquet_path(cfg, cfg.symbol, "1min", base_dir=base_dir)
+    label_p = resolve_labeled_parquet_path(cfg, base_dir=base_dir)
     ir = ingest_p.resolve()
     lr = label_p.resolve()
     lines.append(f"ingest_cache: exists={ingest_p.is_file()}  path={ir}")

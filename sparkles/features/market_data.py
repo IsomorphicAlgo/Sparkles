@@ -7,9 +7,8 @@ from pathlib import Path
 import pandas as pd
 
 from sparkles.config.schema import ContextSymbolConfig, ExperimentConfig
-from sparkles.data.context_ingest import context_parquet_path
+from sparkles.data.ingest import load_symbol_ohlcv
 from sparkles.data.symbol_hints import VOLATILITY_PROXY_HINT, validate_volatility_proxy_symbol
-from sparkles.features.volatility import ensure_exchange_tz_index
 
 # TwelveData does not expose CBOE spot VIX (^VIX) on most plans; use a listed proxy.
 
@@ -44,19 +43,7 @@ def load_context_frame(
             f"context_ingest has no entry for {ticker.upper()!r}; "
             "add it to the experiment YAML and run sparkles ingest",
         )
-    path = context_parquet_path(cfg, spec, base_dir=base_dir)
-    if not path.is_file():
-        raise FileNotFoundError(
-            f"Context Parquet not found: {path}. "
-            f"Run `sparkles ingest -c … --symbol {spec.symbol.upper()} "
-            f"--interval {spec.interval}`.",
-        )
-    df = pd.read_parquet(path)
-    if not isinstance(df.index, pd.DatetimeIndex):
-        df = df.copy()
-        df.index = pd.to_datetime(df.index)
-    df.index = ensure_exchange_tz_index(df.index, cfg.exchange_timezone)
-    return df.sort_index()
+    return load_symbol_ohlcv(cfg, spec.symbol, spec.interval, base_dir=base_dir)
 
 
 def load_market_context_frames(

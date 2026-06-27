@@ -1,11 +1,28 @@
 # Small re-tune grid after adding G4+ features on rklb_daytrade_v3.yaml.
 # Narrow ranges around v3 grid-best (val_f1_macro 0.5624, run 20260623T032329_428232Z).
 #
+#   python scripts/run_grid_search.py --dry-run --grid configs/experiments/grids/rklb_daytrade_xgb_v3_refit.yaml
 #   python scripts/run_grid_search.py --grid configs/experiments/grids/rklb_daytrade_xgb_v3_refit.yaml
+#
+# Grid mechanics:
+#   - Each key is a dotted path into the merged experiment YAML (same as notebook GRID_SPEC).
+#   - Values are lists; the runner takes the cartesian product of all `params` keys.
+#   - Booleans work: e.g. features.range_vol_multi: [true, false] → two combos.
+#   - Lists (horizons, ema windows) are single grid values: [[9, 21], [9, 21, 50]].
+#   - Combo count = product of list lengths — uncomment sparingly.
+#   - `fixed` applies to every combo (does not multiply count).
+#
+# Feature notes:
+#   - market_context: true needs SPY/VIXY ingested for the experiment date range.
+#   - train.sample_weight_method: uniqueness failed in the large v1 grid (label/OHLCV join); test before big sweeps.
+#   - At least one features.* group must stay true (schema validator).
 
 grid_name: rklb_daytrade_xgb_v3_refit
 
 base: configs/experiments/rklb_daytrade_v3.yaml
+
+# Optional overlay (G4a/G4b/G4c presets). Uncomment to merge before params:
+# preset: configs/experiments/presets/rklb_daytrade_v3_g4c.yaml
 
 experiment_name_prefix: grid_v3_refit
 notes_prefix: "v3 refit after feature expansion"
@@ -15,9 +32,76 @@ fixed:
   train.sample_weight_method: none
 
 params:
-  model.xgb_n_estimators: [127, 255]
-  model.xgb_learning_rate: [0.02, 0.03, 0.04]
-  model.xgb_max_depth: [4, 5, 6]
+  # --- Active refit (current) ---
+  model.xgb_n_estimators: [ 127, 255]
+  model.xgb_learning_rate: [0.015]
+  model.xgb_max_depth: [4, 5, 6, 7]
   model.xgb_subsample: [0.6, 0.7, 0.8]
-  model.xgb_colsample_bytree: [0.7, 0.8, 0.9]
-  features.market_spy_return_bars: [15, 30]
+  model.xgb_colsample_bytree: [0.6, 0.7]
+  # features.market_spy_return_bars: [15, 30]
+
+  # --- Model (XGBoost) — uncomment to sweep ---
+  # model.type: [xgboost_classifier]                    # only xgb needs [ml] extra
+  # model.random_seed: [42]
+  # model.class_weight: [balanced, null]
+  # model.xgb_min_child_weight: [1, 3, 5]
+
+  # --- Preprocess ---
+  # preprocess.scaler: [none, standard, robust]
+
+  # --- Train (fit / export policy) ---
+  # train.export_predictions: [none, val]
+  # train.sample_weight_method: [none, uniqueness]
+  # train.drop_val_unseen_classes: [true, false]
+  # train.entry_threshold_take_profit: [0.15, 0.25, 0.35]   # backtest policy hint only
+
+  # --- Feature toggles (true/false ablation) ---
+  # Phase B (core entry columns)
+  # features.log_entry_close: [true, false]
+  # features.label_geometry: [true, false]
+  # features.intraday_range_pct: [true, false]
+  # features.log1p_volume: [true, false]
+
+  # Phase G1 (trailing windows — need full OHLCV warm-up)
+  # features.returns_multi_horizon: [true, false]
+  # features.realized_vol_multi: [true, false]
+  # features.realized_vol_include_ratio: [true, false]
+  # features.range_vol_multi: [true, false]
+
+  # Phase G2 (session / volume)
+  # features.session_time: [true, false]
+  # features.volume_context: [true, false]
+  # features.vwap_distance: [true, false]
+
+  # Phase G3 (microstructure + macro)
+  # features.bar_microstructure: [true, false]
+  # features.market_context: [true, false]
+
+  # Phase G4 (technical + calendar + order flow)
+  # features.technical_indicators: [true, false]
+  # features.session_day_of_week: [true, false]
+  # features.order_flow_proxies: [true, false]
+
+  # --- Feature sub-knobs (numeric / list) ---
+  # G1 horizons / windows
+  # features.returns_horizons_bars: [[3, 5, 10, 15, 30], [5, 15, 30, 60]]
+  # features.realized_vol_windows_bars: [[5, 15, 30], [15, 30, 60]]
+  # features.range_vol_window_bars: [10, 15, 30]
+  # features.range_vol_include_atr_norm: [true, false]
+
+  # G2 volume window
+  # features.volume_median_window_bars: [30, 60, 90]
+
+  # G3 SPY lookback (only when market_context: true)
+  # features.market_spy_return_bars: [5, 15, 30, 60]
+
+  # G4a MACD / RSI / EMA (only when technical_indicators: true)
+  # features.ema_windows_bars: [[9, 21], [9, 21, 50]]
+  # features.rsi_window_bars: [9, 14, 21]
+  # features.macd_fast_bars: [8, 12]
+  # features.macd_slow_bars: [21, 26]
+  # features.macd_signal_bars: [9]
+
+  # G4c order-flow windows (only when order_flow_proxies: true)
+  # features.roll_window_bars: [10, 20, 30]
+  # features.amihud_window_bars: [10, 20, 30]

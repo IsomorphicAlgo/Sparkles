@@ -16,12 +16,12 @@ from sklearn.metrics import accuracy_score
 from sklearn.preprocessing import LabelEncoder
 
 from sparkles.config.schema import ExperimentConfig
-from sparkles.data.ingest import parquet_cache_path
+from sparkles.data.ingest import load_parquet_cache
 from sparkles.features.dataset import (
     build_feature_matrix,
     train_val_masks_by_session_date,
 )
-from sparkles.labels.triple_barrier import labeled_parquet_path
+from sparkles.labels.triple_barrier import load_labeled_cache, resolve_labeled_parquet_path
 from sparkles.models.estimators import (
     build_estimator,
     resolve_logistic_class_weight,
@@ -94,19 +94,9 @@ def _load_labels_ohlcv(
     ohlcv: pd.DataFrame | None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     if labels is None:
-        lpath = labeled_parquet_path(cfg, base_dir=base_dir)
-        if not lpath.is_file():
-            raise FileNotFoundError(
-                f"Labeled Parquet not found: {lpath}. Run `sparkles label` first.",
-            )
-        labels = pd.read_parquet(lpath)
+        labels = load_labeled_cache(cfg, base_dir=base_dir)
     if ohlcv is None:
-        ipath = parquet_cache_path(cfg, base_dir=base_dir)
-        if not ipath.is_file():
-            raise FileNotFoundError(
-                f"Ingest Parquet not found: {ipath}. Run `sparkles ingest` first.",
-            )
-        ohlcv = pd.read_parquet(ipath)
+        ohlcv = load_parquet_cache(cfg, base_dir=base_dir)
     return labels, ohlcv
 
 

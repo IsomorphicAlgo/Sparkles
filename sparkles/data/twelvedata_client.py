@@ -15,10 +15,12 @@ from twelvedata.http_client import DefaultHttpClient
 
 from sparkles.data.retry import (
     RetryPolicy,
+    is_no_data_in_range_error,
     is_retryable_requests_error,
     is_retryable_twelvedata_error,
     sleep_after_twelvedata_retry,
 )
+from twelvedata.exceptions import TwelveDataError
 
 if TYPE_CHECKING:
     from sparkles.config.schema import ExperimentConfig
@@ -183,7 +185,20 @@ def fetch_ohlcv(
     if ex is not None:
         kwargs["exchange"] = ex
     ts = client.time_series(**kwargs)
-    df = ts.as_pandas()
+    try:
+        df = ts.as_pandas()
+    except TwelveDataError as e:
+        if is_no_data_in_range_error(e):
+            logger.info(
+                "No %s %s bars for %s .. %s (weekend/holiday or no quotes): %s",
+                symbol,
+                interval,
+                window_start,
+                window_end,
+                e,
+            )
+            return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+        raise
     if df is None or df.empty:
         return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
     return normalize_ohlcv_frame(df)

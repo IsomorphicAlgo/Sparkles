@@ -38,8 +38,10 @@ Ingested bars are stored as **Apache Parquet** under `data/cache/` (configurable
 
 ### 2.3 Cache behavior
 
-- If the cache file exists and is **newer than `cache_ttl_hours`**, ingest **skips** the API and reuses the file.
-- **`--force`** (or an expired TTL) **re-downloads** the full configured range and **overwrites** that Parquet file (no silent append).
+- **One file per symbol/interval** (e.g. `RKLB_1min.parquet`) holds the full downloaded history; experiment YAML **`data_start` / `data_end`** select the window at **load** time (`label`, `train`).
+- **Incremental ingest:** if the cache already covers your range, ingest **skips** the API. Extending **`data_end`** fetches **only new calendar days** and appends (deduped by bar timestamp)—not the entire history.
+- **`--force`** re-downloads the configured `data_start`–`data_end` window for that symbol and merges into the canonical file (replaces overlapping bars).
+- Legacy dated filenames (`{SYMBOL}_1min_{start}_{end}.parquet`) are still read; the next ingest writes the canonical file.
 
 ### 2.4 API credits (critical)
 

@@ -19,43 +19,44 @@ symbol: RKLB
 exchange_timezone: America/New_York
 
 cache_ttl_hours: 24
-ingest_chunk_calendar_days: 10
+ingest_chunk_calendar_days: 10            # Days per API chunk (1 = one call per calendar day; weekends can 400 without skip)
 ingest_sleep_seconds_between_chunks: 10
 twelvedata_per_minute_credit_wait_seconds: 65
 
 data_start: 2022-01-01
-data_end: 2026-03-30
+data_end: 2026-06-25
 
 train_start: 2022-01-01
 train_end: 2026-01-01
 val_start: 2026-01-02
-val_end: 2026-03-30
+val_end: 2026-05-23
 
-profit_barrier_base: 0.05
-stop_loss_base: 0.02
-min_profit_per_trade_pct: 0.015
-vol_lookback_trading_days: 20
-vertical_max_trading_days: 1
-vol_ref_method: median
-label_entry_stride: 10
-label_cache_suffix: dt_v2
+# --- Triple-barrier labeling (sparkles label) — changing these requires re-label ---
+profit_barrier_base: 0.03                 # Base take-profit above entry (5%); scaled up/down by vol vs reference
+stop_loss_base: 0.03                   # Base stop-loss below entry (2.5%); vol-scaled like TP
+min_profit_per_trade_pct: 0.02          # Floor: effective TP never closer than 2% above entry (after vol scaling)
+vol_lookback_trading_days: 20           # Trading days of daily log returns for σ estimate (no lookahead on entry day)
+vertical_max_trading_days: 2            # Max hold in trading days; 1 = intraday (exit at session end if no TP/SL)
+vol_ref_method: median                  # Reference “normal” vol for scaling: median | mean of σ series
+label_entry_stride: 5                  # Label every Nth 1m bar as a candidate long entry (density vs overlap)
+label_cache_suffix: dt_v2               # Tag in labeled Parquet filename (barrier preset; v2 barrier set)
 
-max_day_trades: 3
+max_day_trades: 60
 rolling_business_days: 5
 
 train:
   experiment_name: rklb_daytrade_v3
   notes: "v3 grid-best — spy_ret_30m, depth 5, lr 0.03, n_est 127, subsample 0.6, colsample 0.8 (run 20260623T032329_428232Z)"
   export_predictions: val
-  entry_threshold_take_profit: 0.35
+  entry_threshold_take_profit: 0.15
   sample_weight_method: none
 
 model:
   type: xgboost_classifier
   random_seed: 42
   class_weight: balanced
-  xgb_max_depth: 5
-  xgb_n_estimators: 127
+  xgb_max_depth: 6
+  xgb_n_estimators: 255
   xgb_learning_rate: 0.03
   xgb_subsample: 0.6
   xgb_colsample_bytree: 0.8

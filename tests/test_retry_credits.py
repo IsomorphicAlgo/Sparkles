@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from twelvedata.exceptions import TwelveDataError
+from twelvedata.exceptions import BadRequestError, TwelveDataError
 
-from sparkles.data.retry import is_per_minute_credit_exhausted_error
+from sparkles.data.retry import is_no_data_in_range_error, is_per_minute_credit_exhausted_error
 
 
 def test_detects_user_message() -> None:
@@ -18,3 +18,10 @@ def test_detects_user_message() -> None:
 def test_ignores_unrelated() -> None:
     exc = TwelveDataError("Invalid symbol")
     assert is_per_minute_credit_exhausted_error(exc) is False
+
+
+def test_no_data_in_range_weekend() -> None:
+    exc = BadRequestError(
+        '{"code":400,"message":"No data is available on the specified dates."}',
+    )
+    assert is_no_data_in_range_error(exc) is True

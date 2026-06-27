@@ -17,9 +17,9 @@ from sparkles.backtest.pnl import (
     realized_return_fraction,
 )
 from sparkles.config.schema import ExperimentConfig
-from sparkles.data.ingest import parquet_cache_path
+from sparkles.data.ingest import load_parquet_cache
 from sparkles.features.volatility import ensure_exchange_tz_index
-from sparkles.labels.triple_barrier import labeled_parquet_path
+from sparkles.labels.triple_barrier import load_labeled_cache, resolve_labeled_parquet_path
 from sparkles.risk.day_trade_ledger import DayTradeLedger
 
 logger = logging.getLogger(__name__)
@@ -416,11 +416,7 @@ def load_backtest_context(
     if predictions.empty:
         raise ValueError(f"No prediction rows for split={split!r}")
 
-    label_path = labeled_parquet_path(cfg, base_dir=root)
-    if not label_path.is_file():
-        raise FileNotFoundError(f"Labeled Parquet not found: {label_path}")
-
-    labels = pd.read_parquet(label_path)
+    labels = load_labeled_cache(cfg, base_dir=root)
     if labels.index.name != "entry_time":
         if "entry_time" in labels.columns:
             labels = labels.set_index("entry_time")
@@ -428,10 +424,7 @@ def load_backtest_context(
             raise ValueError("Labeled Parquet must be indexed by entry_time")
     labels.index = _align_entry_times(pd.Series(labels.index), cfg.exchange_timezone)
 
-    ohlcv_path = parquet_cache_path(cfg, base_dir=root)
-    if not ohlcv_path.is_file():
-        raise FileNotFoundError(f"Ingest Parquet not found: {ohlcv_path}")
-    ohlcv = pd.read_parquet(ohlcv_path)
+    ohlcv = load_parquet_cache(cfg, base_dir=root)
 
     return BacktestContext(
         predictions=predictions,
